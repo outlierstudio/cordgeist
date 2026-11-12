@@ -25,3 +25,9 @@ Do not bundle host libc or silently lower libusb's >=1.0.30 requirement.
 Inspect every executable/library with objdump, and actually run the staged
 wrapper in Ubuntu 22.04. A no-phone doctor exit 2 proves loader/diagnostic behavior,
 not phone compatibility. Earlier measurement scope is summarized in docs/measurements.md.
+
+The portable build remaps checkout/cache locations in compiled source paths.
+Release tar headers use numeric root ownership rather than the build user's
+name. Check both file contents and ELF strings in each newly extracted archive;
+inspect nested corresponding-source archives too. These privacy controls do not
+replace license notices or source obligations.

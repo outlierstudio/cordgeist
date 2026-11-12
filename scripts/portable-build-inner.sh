@@ -4,6 +4,10 @@ cd "$(dirname "$0")/.."
 export PATH="$PWD/.tools/rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin:/usr/local/bin:/usr/bin:/bin"
 export CARGO_HOME="$PWD/.tools/cargo" CARGO_NET_OFFLINE=true CARGO_TARGET_DIR="$PWD/build/portable-target"
 export CC=gcc-10 CXX=g++-10 CORDGEIST_RELOCATABLE=1
+# Keep developer checkout/cache prefixes out of source locations in shipped code.
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$PWD=/build/cordgeist"
+export CFLAGS="${CFLAGS:-} -ffile-prefix-map=$PWD=/build/cordgeist"
+export CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=$PWD=/build/cordgeist"
 prefix="$PWD/build/portable-prefix"
 cd build/portable-libusb-src
 ./autogen.sh --prefix="$prefix" --disable-udev --disable-static --enable-shared

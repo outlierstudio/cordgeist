@@ -45,8 +45,16 @@ for file in README.md LICENSE NOTICE THIRD_PARTY_NOTICES.md CHANGELOG.md; do
 done
 for file in 51-cordgeist.rules UDEV.md PORTABLE-BUILD.md; do git show "HEAD:packaging/$file" > "$stage/packaging/$file"; done
 git show HEAD:scripts/portable-build-inner.sh > "$stage/packaging/portable-build-inner.sh"
-for file in docs/api.md docs/contracts.json docs/measurements.md; do git show "HEAD:$file" > "$stage/$file"; done
+# Ship the committed public docs, including nested acceptance evidence and links.
+while IFS= read -r file; do
+    mkdir -p "$stage/$(dirname "$file")"
+    git show "HEAD:$file" > "$stage/$file"
+done < <(git ls-tree -r --name-only HEAD docs)
 cp -a vendor/notices/. "$stage/third-party-notices/"
+mkdir -p "$stage/third-party-notices/libaoahid"
+for file in LICENSE NOTICE THIRD_PARTY_NOTICES.md; do
+    git show "HEAD:vendor/libaoahid/$file" > "$stage/third-party-notices/libaoahid/$file"
+done
 export CARGO_NET_OFFLINE=true
 python3 scripts/collect-notices.py "$stage/third-party-notices/rust"
 cp "$usb_source" "$stage/sources/libusb-1.0.30.tar.gz"
@@ -62,6 +70,6 @@ exec "$here/bin/cordgeist.bin" "$@"
 WRAPPER
 chmod 755 "$stage/cordgeist"
 (cd "$stage" && find . -type f ! -name MANIFEST.sha256 -exec sha256sum {} \; | LC_ALL=C sort > MANIFEST.sha256 && sha256sum -c MANIFEST.sha256 >/dev/null)
-tar -C "$tmp" -czf "$archive" "$name"
+tar --owner=0 --group=0 --numeric-owner -C "$tmp" -czf "$archive" "$name"
 (cd "$out" && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
 printf '%s\n' "$archive"

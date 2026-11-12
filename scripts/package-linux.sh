@@ -48,6 +48,6 @@ chmod 755 "$dest/cordgeist"
     find . -type f ! -name MANIFEST.sha256 -exec sha256sum {} \; | sort > MANIFEST.sha256
     sha256sum -c MANIFEST.sha256 >/dev/null
 )
-tar -C "$root/build" -czf "$root/build/$name.tar.gz" "$name"
+tar --owner=0 --group=0 --numeric-owner -C "$root/build" -czf "$root/build/$name.tar.gz" "$name"
 (cd "$root/build" && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
 echo "$root/build/$name.tar.gz"
