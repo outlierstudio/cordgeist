@@ -1,0 +1,6 @@
+AOAHID_2.0 {
+  global:
+    aoahid_*;
+  local:
+    *;
+};

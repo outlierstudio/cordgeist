@@ -1,0 +1,51 @@
+[package]
+name = "cordgeist"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+license = "MIT"
+build = "build.rs"
+
+[workspace]
+exclude = ["vendor/libaoahid/bindings/rust/aoahid", "vendor/libaoahid/bindings/rust/aoahid-sys"]
+
+[features]
+default = []
+native-aoa = ["dep:aoahid", "dep:aoahid-sys"]
+fake = []
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+bytes = "=1.12.1"
+http = "=1.5.0"
+http-body-util = "=0.1.5"
+tower-service = "=0.3.3"
+schemars = { version = "=1.2.3", features = ["derive"] }
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "process", "io-util", "io-std", "net", "time", "sync"] }
+tokio-util = { version = "=0.7.20", features = ["rt"] }
+rmcp = { version = "=3.8.0", default-features = false, features = ["server", "macros", "transport-io", "transport-streamable-http-server", "client", "transport-streamable-http-client-reqwest"] }
+clap = { version = "=4.6.7", features = ["derive"] }
+thiserror = "=2.0.21"
+blake3 = "=1.8.7"
+getrandom = "=0.3.4"
+image = { version = "=0.25.10", default-features = false, features = ["png"] }
+aoahid = { path = "vendor/libaoahid/bindings/rust/aoahid", optional = true }
+aoahid-sys = { path = "vendor/libaoahid/bindings/rust/aoahid-sys", optional = true }
+quick-xml = "=0.42.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "=0.2.191"
+
+[build-dependencies]
+cc = "=1.11.0"
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+rmcp = { version = "=3.8.0", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }
+http = "=1.5.0"
+
+[[bin]]
+name = "native-check"
+path = "src/bin/native-check.rs"
+required-features = ["native-aoa"]

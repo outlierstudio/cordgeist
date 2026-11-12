@@ -1,0 +1,1498 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  AOAHID_EXPECTED_REPOSITORY: nemarpuc/libaoahid
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release tag and metadata
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      epoch: ${{ steps.metadata.outputs.epoch }}
+      source_sha: ${{ steps.metadata.outputs.source_sha }}
+    steps:
+      - name: Check out source and tag history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+
+      - name: Verify tag target and release versions
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$AOAHID_EXPECTED_REPOSITORY"
+          source_commit="$(git rev-parse "${GITHUB_REF_NAME}^{commit}")"
+          test "$source_commit" = "$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          python tools/check_input_provenance.py
+          python tools/check_public_contracts.py
+          python tests/release/test_release_tools.py
+          python tools/release/validate_release.py --tag "${GITHUB_REF_NAME}" --notes-out build/release-notes.md
+          python tools/symbol-lint/symbol_lint.py --header include/aoahid.h
+          printf 'version=%s\n' "${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          printf 'epoch=%s\n' "$(git show -s --format=%ct "$source_commit")" >> "$GITHUB_OUTPUT"
+          printf 'source_sha=%s\n' "$source_commit" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.name }} release packages
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86-64 (Ubuntu 22.04 glibc)
+            os: ubuntu-22.04
+            platform: linux
+            arch: x86_64
+            qualifier: ubuntu22.04
+            generator: Ninja
+            elf_machine: Advanced Micro Devices X86-64
+          - name: Linux AArch64 (Ubuntu 22.04 glibc)
+            os: ubuntu-22.04-arm
+            platform: linux
+            arch: aarch64
+            qualifier: ubuntu22.04
+            generator: Ninja
+            elf_machine: AArch64
+          - name: macOS ARM64
+            os: macos-15
+            platform: macos
+            arch: arm64
+          - name: macOS x86-64
+            os: macos-15-intel
+            platform: macos
+            arch: x86_64
+          - name: Windows x64
+            os: windows-2025-vs2026
+            platform: windows
+            arch: x86_64
+            generator: Visual Studio 18 2026
+            cmake_arch: x64
+            triplet: x64-windows
+            coff_machine: IMAGE_FILE_MACHINE_AMD64
+          - name: Windows ARM64
+            os: windows-11-vs2026-arm
+            platform: windows
+            arch: arm64
+            generator: Visual Studio 18 2026
+            cmake_arch: ARM64
+            triplet: arm64-windows
+            coff_machine: IMAGE_FILE_MACHINE_ARM64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.validate.outputs.epoch }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+
+      - name: Configure deterministic transport gate (Unix)
+        if: matrix.platform != 'windows'
+        run: >-
+          cmake -S . -B build/gate -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DAOAHID_USE_FAKE_LIBUSB=ON
+          -DAOAHID_BUILD_SHARED=ON
+          -DAOAHID_BUILD_STATIC=ON
+          -DAOAHID_BUILD_TESTS=ON
+          -DAOAHID_BUILD_EXAMPLES=ON
+          -DCMAKE_INSTALL_LIBDIR=lib
+
+      - name: Configure deterministic transport gate (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          cmake -S . -B build/gate -G "${{ matrix.generator }}" -A "${{ matrix.cmake_arch }}" `
+            -DAOAHID_USE_FAKE_LIBUSB=ON `
+            -DAOAHID_BUILD_SHARED=ON `
+            -DAOAHID_BUILD_STATIC=ON `
+            -DAOAHID_BUILD_TESTS=ON `
+            -DAOAHID_BUILD_EXAMPLES=ON `
+            -DCMAKE_INSTALL_LIBDIR=lib
+          if ($LASTEXITCODE -ne 0) { throw "deterministic transport configure failed" }
+
+      - name: Run deterministic transport gate (Unix)
+        if: matrix.platform != 'windows'
+        run: |
+          cmake --build build/gate --config Release --parallel
+          ctest --test-dir build/gate -C Release --output-on-failure
+
+      - name: Run deterministic transport gate (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          cmake --build build/gate --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw "deterministic transport build failed" }
+          ctest --test-dir build/gate -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw "deterministic transport tests failed" }
+
+      - name: Install Linux build tools
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential \
+            bzip2 \
+            ca-certificates \
+            curl \
+            libudev-dev \
+            ninja-build \
+            pkg-config
+
+      - name: Build and test pinned libusb for Linux
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$PWD/build/dependencies/libusb-1.0.30.tar.bz2"
+          source_dir="$PWD/build/dependencies/libusb-1.0.30"
+          prefix="$PWD/build/libusb-prefix"
+          mkdir -p "${archive%/*}"
+          curl --proto '=https' --tlsv1.2 --fail --location \
+            --retry 5 --retry-all-errors \
+            --output "$archive" \
+            https://github.com/libusb/libusb/releases/download/v1.0.30/libusb-1.0.30.tar.bz2
+          printf '%s  %s\n' \
+            fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf \
+            "$archive" | sha256sum --check --strict
+          tar --no-same-owner -xjf "$archive" -C "${archive%/*}"
+          test -x "$source_dir/configure"
+          cd "$source_dir"
+          ./configure --help | grep -F -- '--prefix=PREFIX'
+          # Recorded in build-metadata.json, so each archive states how the
+          # bundled libusb was built from the bundled source.
+          configure_flags='--disable-static --enable-shared --enable-tests-build --enable-udev'
+          # shellcheck disable=SC2086
+          ./configure --prefix="$prefix" $configure_flags
+          printf 'AOAHID_LIBUSB_CONFIGURE=%s\n' "$configure_flags" >> "$GITHUB_ENV"
+          make --jobs="$(nproc)"
+          make check
+          make install
+
+          mapfile -t pc_files < <(find "$prefix" -type f -path '*/pkgconfig/libusb-1.0.pc')
+          test "${#pc_files[@]}" -eq 1
+          pc_dir="${pc_files[0]%/*}"
+          libusb_version="$(PKG_CONFIG_PATH="$pc_dir" pkg-config --modversion libusb-1.0)"
+          libusb_libdir="$(PKG_CONFIG_PATH="$pc_dir" pkg-config --variable=libdir libusb-1.0)"
+          libusb_includedir="$(PKG_CONFIG_PATH="$pc_dir" pkg-config --variable=includedir libusb-1.0)"
+          test "$libusb_version" = 1.0.30
+          test -f "$libusb_includedir/libusb-1.0/libusb.h"
+          test -e "$libusb_libdir/libusb-1.0.so"
+          printf 'PKG_CONFIG_PATH=%s\n' "$pc_dir" >> "$GITHUB_ENV"
+          printf 'AOAHID_LIBUSB_PREFIX=%s\n' "$prefix" >> "$GITHUB_ENV"
+          printf 'AOAHID_LIBUSB_LIBDIR=%s\n' "$libusb_libdir" >> "$GITHUB_ENV"
+          printf 'AOAHID_LIBUSB_INCLUDEDIR=%s\n' "$libusb_includedir" >> "$GITHUB_ENV"
+          printf 'AOAHID_LIBUSB_PC=%s\n' "${pc_files[0]}" >> "$GITHUB_ENV"
+
+      - name: Build and install real Linux libraries
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variant in shared static; do
+            shared=OFF
+            static=OFF
+            if test "$variant" = shared; then shared=ON; else static=ON; fi
+            cmake -S . -B "build/$variant" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DAOAHID_USE_FAKE_LIBUSB=OFF \
+              -DAOAHID_BUILD_SHARED:BOOL="$shared" \
+              -DAOAHID_BUILD_STATIC:BOOL="$static" \
+              -DAOAHID_BUILD_TESTS:BOOL=OFF \
+              -DAOAHID_BUILD_EXAMPLES:BOOL=OFF \
+              -DCMAKE_PREFIX_PATH="$AOAHID_LIBUSB_PREFIX" \
+              -DCMAKE_INSTALL_RPATH='$ORIGIN' \
+              -DCMAKE_INSTALL_LIBDIR=lib
+            cmake --build "build/$variant" --parallel
+            cmake --install "build/$variant" --prefix "build/stage-$variant"
+            cp -a "$AOAHID_LIBUSB_LIBDIR"/libusb-1.0.so* "build/stage-$variant/lib/"
+            install -D -m 0644 build/dependencies/libusb-1.0.30/COPYING \
+              "build/stage-$variant/share/doc/libaoahid/third-party/libusb-copyright"
+            install -D -m 0644 build/dependencies/libusb-1.0.30.tar.bz2 \
+              "build/stage-$variant/share/doc/libaoahid/third-party/source/libusb-1.0.30.tar.bz2"
+          done
+          mkdir -p build/stage-static/include
+          cp -a "$AOAHID_LIBUSB_INCLUDEDIR/libusb-1.0" build/stage-static/include/
+          install -D -m 0644 "$AOAHID_LIBUSB_PC" \
+            build/stage-static/lib/pkgconfig/libusb-1.0.pc
+          python tools/release/pkg_config_metadata.py \
+            --relocate build/stage-static/lib/pkgconfig/libusb-1.0.pc
+
+      - name: Verify real Linux libraries, ABI, and installed consumers
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          library=build/shared/libaoahid.so.${{ needs.validate.outputs.version }}
+          for variant in shared static; do
+            mapfile -t glibc_inputs < <(
+              find "build/stage-$variant/lib" -maxdepth 1 -type f -name '*.so*' -print | sort
+            )
+            test "${#glibc_inputs[@]}" -gt 0
+            python tools/release/glibc_versions.py \
+              --root "build/stage-$variant" \
+              --output "build/stage-$variant/share/doc/libaoahid/glibc-requirements.json" \
+              --maximum GLIBC_2.35 \
+              "${glibc_inputs[@]}"
+          done
+          mapfile -t dependency_runtimes < <(
+            find build/stage-shared/lib -maxdepth 1 -type f -name 'libusb-1.0.so.*.*'
+          )
+          test "${#dependency_runtimes[@]}" -eq 1
+          require_elf_machine() {
+            local binary="$1"
+            local expected="$2"
+            local -a machines=()
+            mapfile -t machines < <(
+              readelf -h "$binary" | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p'
+            )
+            if test "${#machines[@]}" -eq 0; then
+              echo "$binary has no inspected ELF Machine entry" >&2
+              return 1
+            fi
+            local machine
+            for machine in "${machines[@]}"; do
+              if test "$machine" != "$expected"; then
+                echo "$binary contains ELF Machine '$machine', expected '$expected'" >&2
+                return 1
+              fi
+            done
+          }
+          mapfile -t architecture_inputs < <(
+            find build/stage-shared/lib build/stage-static/lib -maxdepth 1 -type f \
+              \( -name '*.a' -o -name '*.so' -o -name '*.so.*' \) -print | sort -u
+          )
+          test "${#architecture_inputs[@]}" -gt 0
+          for binary in "${architecture_inputs[@]}"; do
+            require_elf_machine "$binary" '${{ matrix.elf_machine }}'
+          done
+          readelf -d "$library" | grep -F 'Shared library: [libusb-1.0.so.0]'
+          readelf -d build/stage-shared/lib/libaoahid.so.${{ needs.validate.outputs.version }} \
+            | grep -E '(RPATH|RUNPATH)' | grep -F '[$ORIGIN]'
+          LD_LIBRARY_PATH="$AOAHID_LIBUSB_LIBDIR" \
+            python tools/symbol-lint/symbol_lint.py --header include/aoahid.h --binary "$library"
+          cmake -S tools/release/consumer -B build/consumer-shared -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PWD/build/stage-shared" \
+            -DAOAHID_FIND_COMPONENTS=shared
+          cmake --build build/consumer-shared --parallel
+          LD_LIBRARY_PATH="$PWD/build/stage-shared/lib" ./build/consumer-shared/aoahid_consumer
+          cmake -S tools/release/consumer -B build/consumer-static -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=TRUE \
+            -DCMAKE_PREFIX_PATH="$PWD/build/stage-static" \
+            -DAOAHID_FIND_COMPONENTS=static \
+            -DAOAHID_CONSUMER_TARGET=aoahid::aoahid_static
+          cmake --build build/consumer-static --parallel
+          LD_LIBRARY_PATH="$PWD/build/stage-static/lib" ./build/consumer-static/aoahid_consumer
+          if cmake -S tools/release/consumer -B build/consumer-wrong-static -G Ninja \
+              -DCMAKE_PREFIX_PATH="$PWD/build/stage-shared" \
+              -DAOAHID_FIND_COMPONENTS=static; then
+            echo 'shared-only package accepted the unavailable static component' >&2
+            exit 1
+          fi
+          if cmake -S tools/release/consumer -B build/consumer-wrong-shared -G Ninja \
+              -DCMAKE_PREFIX_PATH="$PWD/build/stage-static" \
+              -DAOAHID_FIND_COMPONENTS=shared; then
+            echo 'static-only package accepted the unavailable shared component' >&2
+            exit 1
+          fi
+
+          relocated_parent="$(mktemp -d "$PWD/build/pkgconfig-relocated.XXXXXX")"
+          for variant in shared static; do
+            relocated="$relocated_parent/$variant"
+            mkdir -p "$relocated"
+            cp -a "build/stage-$variant/." "$relocated/"
+            pc_dir="$relocated/lib/pkgconfig"
+            prefix="$(env PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR="$pc_dir" \
+              pkg-config --variable=prefix aoahid)"
+            test "$(realpath -m "$prefix")" = "$(realpath "$relocated")"
+            mode=()
+            if test "$variant" = static; then mode=(--static); fi
+            cflags="$(env PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR="$pc_dir" \
+              pkg-config "${mode[@]}" --cflags aoahid)"
+            libraries="$(env PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR="$pc_dir" \
+              pkg-config "${mode[@]}" --libs aoahid)"
+            case "$cflags $libraries" in
+              *"$PWD/build/stage-"*|*"$AOAHID_LIBUSB_PREFIX"*)
+                echo "$variant pkg-config flags retain a build/install prefix" >&2
+                exit 1
+                ;;
+            esac
+            read -r -a cflag_array <<<"$cflags"
+            read -r -a library_array <<<"$libraries"
+            cc "${cflag_array[@]}" tools/release/consumer/main.c \
+              -o "$relocated_parent/consumer-$variant" "${library_array[@]}"
+            LD_LIBRARY_PATH="$relocated/lib" "$relocated_parent/consumer-$variant"
+          done
+
+      - name: Package Linux distributions
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          compiler="$(c++ --version | head -n 1)"
+          cmake_version="$(cmake --version | head -n 1)"
+          libusb_version="$(pkg-config --modversion libusb-1.0)"
+          test "$libusb_version" = 1.0.30
+          prefix="libaoahid-${{ needs.validate.outputs.version }}-linux-${{ matrix.arch }}-${{ matrix.qualifier }}"
+          for variant in shared static; do
+            glibc_maximum="$(python -c \
+              'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["maximum_required"])' \
+              "build/stage-$variant/share/doc/libaoahid/glibc-requirements.json")"
+            python tools/release/package_release.py \
+              --source-root . \
+              --stage "build/stage-$variant" \
+              --out-dir out \
+              --base-name "$prefix-$variant" \
+              --version '${{ needs.validate.outputs.version }}' \
+              --platform linux \
+              --arch '${{ matrix.arch }}' \
+              --variant "$variant" \
+              --source-sha '${{ needs.validate.outputs.source_sha }}' \
+              --created-epoch '${{ needs.validate.outputs.epoch }}' \
+              --libusb-version "$libusb_version" \
+              --build-metadata "runner_image=${ImageOS:-unknown}" \
+              --build-metadata "runner_image_version=${ImageVersion:-unknown}" \
+              --build-metadata "compiler=$compiler" \
+              --build-metadata "cmake=$cmake_version" \
+              --build-metadata 'glibc_baseline=ubuntu-22.04-glibc-2.35' \
+              --build-metadata "glibc_maximum_required=$glibc_maximum" \
+              --build-metadata 'libusb_source_commit=87a55632db62c9bdc58cd31d3ccfa673f1bb017f' \
+              --build-metadata 'libusb_source_archive_sha256=fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf' \
+              --build-metadata "libusb_build=unmodified source; ./configure $AOAHID_LIBUSB_CONFIGURE; make; make install"
+          done
+
+      - name: Prepare macOS build tools
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v ninja >/dev/null || brew install ninja
+          command -v pkg-config >/dev/null || brew install pkgconf
+
+      - name: Build pinned libusb for macOS
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export MACOSX_DEPLOYMENT_TARGET=11.0
+          archive="$PWD/build/dependencies/libusb-1.0.30.tar.bz2"
+          source_dir="$PWD/build/dependencies/libusb-1.0.30"
+          prefix="$PWD/build/libusb-prefix"
+          mkdir -p "${archive%/*}"
+          curl --proto '=https' --tlsv1.2 --fail --location \
+            --retry 5 --retry-all-errors \
+            --output "$archive" \
+            https://github.com/libusb/libusb/releases/download/v1.0.30/libusb-1.0.30.tar.bz2
+          printf '%s  %s\n' \
+            fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf \
+            "$archive" | shasum -a 256 -c -
+          tar -xjf "$archive" -C "${archive%/*}"
+          test -x "$source_dir/configure"
+          cd "$source_dir"
+          # Recorded in build-metadata.json, as for the Linux archives.
+          configure_flags='--disable-static --enable-shared'
+          # shellcheck disable=SC2086
+          ./configure --prefix="$prefix" $configure_flags
+          printf 'AOAHID_LIBUSB_CONFIGURE=%s\n' "$configure_flags" >> "$GITHUB_ENV"
+          make --jobs="$(sysctl -n hw.ncpu)"
+          make install
+
+          # Load libusb through @rpath so the archive works wherever it is
+          # unpacked. Changing the install name invalidates the signature.
+          install_name_tool -id @rpath/libusb-1.0.0.dylib "$prefix/lib/libusb-1.0.0.dylib"
+          codesign --force --sign - "$prefix/lib/libusb-1.0.0.dylib"
+
+          pc_file="$prefix/lib/pkgconfig/libusb-1.0.pc"
+          test -f "$pc_file"
+          pc_dir="${pc_file%/*}"
+          libusb_version="$(PKG_CONFIG_PATH="$pc_dir" pkg-config --modversion libusb-1.0)"
+          libusb_libdir="$(PKG_CONFIG_PATH="$pc_dir" pkg-config --variable=libdir libusb-1.0)"
+          libusb_includedir="$(PKG_CONFIG_PATH="$pc_dir" pkg-config --variable=includedir libusb-1.0)"
+          test "$libusb_version" = 1.0.30
+          test -f "$libusb_includedir/libusb-1.0/libusb.h"
+          test -f "$libusb_libdir/libusb-1.0.0.dylib"
+          test -L "$libusb_libdir/libusb-1.0.dylib"
+          printf 'PKG_CONFIG_PATH=%s\n' "$pc_dir" >> "$GITHUB_ENV"
+          printf 'AOAHID_LIBUSB_PREFIX=%s\n' "$prefix" >> "$GITHUB_ENV"
+          printf 'AOAHID_LIBUSB_LIBDIR=%s\n' "$libusb_libdir" >> "$GITHUB_ENV"
+          printf 'AOAHID_LIBUSB_INCLUDEDIR=%s\n' "$libusb_includedir" >> "$GITHUB_ENV"
+          printf 'AOAHID_LIBUSB_PC=%s\n' "$pc_file" >> "$GITHUB_ENV"
+
+      - name: Build and install real macOS libraries
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variant in shared static; do
+            shared=OFF
+            static=OFF
+            if test "$variant" = shared; then shared=ON; else static=ON; fi
+            cmake -S . -B "build/$variant" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+              -DCMAKE_OSX_ARCHITECTURES='${{ matrix.arch }}' \
+              -DAOAHID_USE_FAKE_LIBUSB=OFF \
+              -DAOAHID_BUILD_SHARED:BOOL="$shared" \
+              -DAOAHID_BUILD_STATIC:BOOL="$static" \
+              -DAOAHID_BUILD_TESTS:BOOL=OFF \
+              -DAOAHID_BUILD_EXAMPLES:BOOL=OFF \
+              -DCMAKE_PREFIX_PATH="$AOAHID_LIBUSB_PREFIX" \
+              -DCMAKE_INSTALL_RPATH='@loader_path' \
+              -DCMAKE_INSTALL_LIBDIR=lib
+            cmake --build "build/$variant" --parallel
+            cmake --install "build/$variant" --prefix "build/stage-$variant"
+            cp -a "$AOAHID_LIBUSB_LIBDIR/libusb-1.0.0.dylib" "$AOAHID_LIBUSB_LIBDIR/libusb-1.0.dylib" \
+              "build/stage-$variant/lib/"
+            mkdir -p "build/stage-$variant/share/doc/libaoahid/third-party/source"
+            install -m 0644 build/dependencies/libusb-1.0.30/COPYING \
+              "build/stage-$variant/share/doc/libaoahid/third-party/libusb-copyright"
+            install -m 0644 build/dependencies/libusb-1.0.30.tar.bz2 \
+              "build/stage-$variant/share/doc/libaoahid/third-party/source/libusb-1.0.30.tar.bz2"
+          done
+          mkdir -p build/stage-static/include build/stage-static/lib/pkgconfig
+          cp -a "$AOAHID_LIBUSB_INCLUDEDIR/libusb-1.0" build/stage-static/include/
+          install -m 0644 "$AOAHID_LIBUSB_PC" build/stage-static/lib/pkgconfig/libusb-1.0.pc
+          python tools/release/pkg_config_metadata.py \
+            --relocate build/stage-static/lib/pkgconfig/libusb-1.0.pc
+
+      - name: Verify real macOS libraries, ABI, and installed consumers
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          arch='${{ matrix.arch }}'
+          library=""
+          for variant in shared static; do
+            for file in build/stage-$variant/lib/*.dylib build/stage-$variant/lib/*.a; do
+              test -e "$file" || continue
+              test -L "$file" && continue
+              test "$(lipo -archs "$file")" = "$arch"
+              case "$file" in
+                *.dylib)
+                  # Ad-hoc signed, as Apple Silicon requires; not notarized.
+                  codesign --force --sign - "$file"
+                  codesign --verify --strict "$file"
+                  test "$(vtool -show-build "$file" | awk '/minos/ { print $2; exit }')" = 11.0
+                  # Every dependency is another library of this package (by
+                  # @rpath) or an OS library; no build-machine path remains.
+                  otool -L "$file" | tail -n +2 | awk '{ print $1 }' | while read -r dependency; do
+                    case "$dependency" in
+                      @rpath/libaoahid.2.dylib|@rpath/libusb-1.0.0.dylib|/usr/lib/*|/System/Library/*) ;;
+                      *) echo "$file depends on $dependency" >&2; exit 1 ;;
+                    esac
+                  done
+                  ;;
+              esac
+            done
+          done
+          for file in build/stage-shared/lib/libaoahid.*.*.*.dylib; do
+            library="$file"
+          done
+          test -f "$library"
+          otool -L "$library" | grep -F '@rpath/libusb-1.0.0.dylib'
+          otool -l "$library" | grep -A2 LC_RPATH | grep -F 'path @loader_path '
+          python tools/symbol-lint/symbol_lint.py --header include/aoahid.h --binary "$library"
+          cmake -S tools/release/consumer -B build/consumer-shared -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PWD/build/stage-shared" \
+            -DAOAHID_FIND_COMPONENTS=shared
+          cmake --build build/consumer-shared --parallel
+          DYLD_LIBRARY_PATH="$PWD/build/stage-shared/lib" ./build/consumer-shared/aoahid_consumer
+          cmake -S tools/release/consumer -B build/consumer-static -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=TRUE \
+            -DCMAKE_PREFIX_PATH="$PWD/build/stage-static" \
+            -DAOAHID_FIND_COMPONENTS=static \
+            -DAOAHID_CONSUMER_TARGET=aoahid::aoahid_static
+          cmake --build build/consumer-static --parallel
+          DYLD_LIBRARY_PATH="$PWD/build/stage-static/lib" ./build/consumer-static/aoahid_consumer
+          if cmake -S tools/release/consumer -B build/consumer-wrong-static -G Ninja \
+              -DCMAKE_PREFIX_PATH="$PWD/build/stage-shared" \
+              -DAOAHID_FIND_COMPONENTS=static; then
+            echo 'shared-only package accepted the unavailable static component' >&2
+            exit 1
+          fi
+          if cmake -S tools/release/consumer -B build/consumer-wrong-shared -G Ninja \
+              -DCMAKE_PREFIX_PATH="$PWD/build/stage-static" \
+              -DAOAHID_FIND_COMPONENTS=shared; then
+            echo 'static-only package accepted the unavailable shared component' >&2
+            exit 1
+          fi
+
+          real_path() { python -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
+          relocated_parent="$(mktemp -d "$PWD/build/pkgconfig-relocated.XXXXXX")"
+          for variant in shared static; do
+            relocated="$relocated_parent/$variant"
+            mkdir -p "$relocated"
+            cp -a "build/stage-$variant/." "$relocated/"
+            pc_dir="$relocated/lib/pkgconfig"
+            prefix="$(env PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR="$pc_dir" \
+              pkg-config --variable=prefix aoahid)"
+            test "$(real_path "$prefix")" = "$(real_path "$relocated")"
+            mode=""
+            if test "$variant" = static; then mode="--static"; fi
+            cflags="$(env PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR="$pc_dir" \
+              pkg-config $mode --cflags aoahid)"
+            libraries="$(env PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR="$pc_dir" \
+              pkg-config $mode --libs aoahid)"
+            case "$cflags $libraries" in
+              *"$PWD/build/stage-"*|*"$AOAHID_LIBUSB_PREFIX"*)
+                echo "$variant pkg-config flags retain a build/install prefix" >&2
+                exit 1
+                ;;
+            esac
+            read -r -a cflag_array <<<"$cflags"
+            read -r -a library_array <<<"$libraries"
+            cc "${cflag_array[@]}" tools/release/consumer/main.c \
+              -o "$relocated_parent/consumer-$variant" "${library_array[@]}"
+            DYLD_LIBRARY_PATH="$relocated/lib" "$relocated_parent/consumer-$variant"
+          done
+
+      - name: Package macOS distributions
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          compiler="$(c++ --version | head -n 1)"
+          cmake_version="$(cmake --version | head -n 1)"
+          libusb_version="$(pkg-config --modversion libusb-1.0)"
+          test "$libusb_version" = 1.0.30
+          prefix="libaoahid-${{ needs.validate.outputs.version }}-macos-${{ matrix.arch }}"
+          for variant in shared static; do
+            python tools/release/package_release.py \
+              --source-root . \
+              --stage "build/stage-$variant" \
+              --out-dir out \
+              --base-name "$prefix-$variant" \
+              --version '${{ needs.validate.outputs.version }}' \
+              --platform macos \
+              --arch '${{ matrix.arch }}' \
+              --variant "$variant" \
+              --source-sha '${{ needs.validate.outputs.source_sha }}' \
+              --created-epoch '${{ needs.validate.outputs.epoch }}' \
+              --libusb-version "$libusb_version" \
+              --build-metadata "runner_image=${ImageOS:-unknown}" \
+              --build-metadata "runner_image_version=${ImageVersion:-unknown}" \
+              --build-metadata "compiler=$compiler" \
+              --build-metadata "cmake=$cmake_version" \
+              --build-metadata 'macos_deployment_target=11.0' \
+              --build-metadata 'signature=ad-hoc, not notarized' \
+              --build-metadata 'libusb_source_commit=87a55632db62c9bdc58cd31d3ccfa673f1bb017f' \
+              --build-metadata 'libusb_source_archive_sha256=fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf' \
+              --build-metadata "libusb_build=unmodified source; ./configure $AOAHID_LIBUSB_CONFIGURE; make; make install; install_name_tool -id @rpath/libusb-1.0.0.dylib; codesign --force --sign -"
+          done
+
+      - name: Check out pinned vcpkg
+        if: matrix.platform == 'windows'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: microsoft/vcpkg
+          ref: ddd0023b0eee70986e42ed49d9d4afb8098f212e
+          path: .vcpkg
+          persist-credentials: false
+
+      - name: Build pinned Windows dependency set
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/dependencies | Out-Null
+          $sourceArchive = "$PWD/build/dependencies/libusb-1.0.30.tar.bz2"
+          $downloaded = $false
+          foreach ($attempt in 1..5) {
+            try {
+              Invoke-WebRequest `
+                -Uri 'https://github.com/libusb/libusb/releases/download/v1.0.30/libusb-1.0.30.tar.bz2' `
+                -OutFile $sourceArchive `
+                -ErrorAction Stop
+              $downloaded = $true
+              break
+            } catch {
+              if ($attempt -eq 5) { throw }
+            }
+          }
+          if (-not $downloaded) { throw "official libusb source download failed" }
+          $sourceHash = (Get-FileHash -Algorithm SHA256 $sourceArchive).Hash.ToLowerInvariant()
+          if ($sourceHash -ne 'fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf') {
+            throw "official libusb source archive checksum mismatch"
+          }
+          $portManifest = Get-Content "$PWD/.vcpkg/ports/libusb/vcpkg.json" -Raw | ConvertFrom-Json
+          if ([string]$portManifest.version -ne '1.0.30') {
+            throw "pinned vcpkg port is not libusb 1.0.30"
+          }
+          $portfile = Get-Content "$PWD/.vcpkg/ports/libusb/portfile.cmake" -Raw
+          if ($portfile -notmatch '3251c9f41e900efa13caf981483f46886c8434bf4c30f3fd3073921b06be9977cebcf4a18f7bc46db86e33d7f19752296377be9050abfb8d887ffeb377864647') {
+            throw "pinned vcpkg libusb source SHA-512 changed"
+          }
+          $portfileHash = (Get-FileHash -Algorithm SHA256 "$PWD/.vcpkg/ports/libusb/portfile.cmake").Hash.ToLowerInvariant()
+          if ($portfileHash -ne '63cc8c6a76d0229859e3ae280471fb625a6304db775e506677d37a3b22b736fc') {
+            throw "pinned vcpkg libusb portfile checksum changed"
+          }
+          $portManifestHash = (Get-FileHash -Algorithm SHA256 "$PWD/.vcpkg/ports/libusb/vcpkg.json").Hash.ToLowerInvariant()
+          if ($portManifestHash -ne '865eb2f6137d52dfb3a36d7f95f76e3707811d69f9fbb45e887ccf72d0db76ed') {
+            throw "pinned vcpkg libusb manifest checksum changed"
+          }
+          $vcpkgLicenseHash = (Get-FileHash -Algorithm SHA256 "$PWD/.vcpkg/LICENSE.txt").Hash.ToLowerInvariant()
+          if ($vcpkgLicenseHash -ne '1ee376fc340e0aa6ad6a3581c94126e741468705096ac92263048a21daa86460') {
+            throw "pinned vcpkg MIT license checksum changed"
+          }
+
+          & .\.vcpkg\bootstrap-vcpkg.bat -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw "vcpkg bootstrap failed" }
+          & .\.vcpkg\vcpkg.exe install `
+            --triplet '${{ matrix.triplet }}' `
+            --x-manifest-root="$PWD" `
+            --x-install-root="$PWD/build/vcpkg_installed" `
+            --clean-after-build
+          if ($LASTEXITCODE -ne 0) { throw "vcpkg install failed" }
+
+      - name: Build and install real Windows libraries
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $dependencyBin = "$PWD/build/vcpkg_installed/${{ matrix.triplet }}/bin"
+          $dependencyLib = "$PWD/build/vcpkg_installed/${{ matrix.triplet }}/lib"
+          $dependencyInclude = "$PWD/build/vcpkg_installed/${{ matrix.triplet }}/include/libusb-1.0"
+          $dependencyShare = "$PWD/build/vcpkg_installed/${{ matrix.triplet }}/share/libusb"
+          $dependencyPc = "$PWD/build/vcpkg_installed/${{ matrix.triplet }}/lib/pkgconfig/libusb-1.0.pc"
+          $dlls = @(Get-ChildItem $dependencyBin -Filter '*usb*.dll' -File)
+          $libs = @(Get-ChildItem $dependencyLib -Filter '*usb*.lib' -File)
+          if ($dlls.Count -ne 1) { throw "expected exactly one libusb DLL, found $($dlls.Count)" }
+          if ($libs.Count -ne 1) { throw "expected exactly one release libusb import library, found $($libs.Count)" }
+          if (-not (Test-Path "$dependencyInclude/libusb.h")) { throw "libusb public header is missing" }
+          if (-not (Test-Path "$dependencyShare/copyright")) { throw "libusb copyright file is missing" }
+          if (-not (Test-Path $dependencyPc -PathType Leaf)) { throw "libusb pkg-config metadata is missing" }
+
+          foreach ($variant in @('shared', 'static')) {
+            $buildShared = if ($variant -eq 'shared') { 'ON' } else { 'OFF' }
+            $buildStatic = if ($variant -eq 'static') { 'ON' } else { 'OFF' }
+            $installPrefix = "$PWD/build/stage-$variant"
+            # An argument array is passed to CMake verbatim. Line-continued
+            # bareword arguments were how the two variant options stopped
+            # reaching the configure step and produced merged packages.
+            $configureArguments = @(
+              '-S', '.',
+              '-B', "build/$variant",
+              '-G', '${{ matrix.generator }}',
+              '-A', '${{ matrix.cmake_arch }}',
+              "-DCMAKE_TOOLCHAIN_FILE=$PWD/.vcpkg/scripts/buildsystems/vcpkg.cmake",
+              '-DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=TRUE',
+              "-DCMAKE_INSTALL_PREFIX=$installPrefix",
+              '-DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}',
+              "-DVCPKG_INSTALLED_DIR=$PWD/build/vcpkg_installed",
+              '-DVCPKG_MANIFEST_INSTALL=OFF',
+              "-DLIBUSB_INCLUDE_DIR=$dependencyInclude",
+              "-DLIBUSB_LIBRARY=$($libs[0].FullName)",
+              '-DAOAHID_USE_FAKE_LIBUSB=OFF',
+              "-DAOAHID_BUILD_SHARED:BOOL=$buildShared",
+              "-DAOAHID_BUILD_STATIC:BOOL=$buildStatic",
+              '-DAOAHID_BUILD_TESTS:BOOL=OFF',
+              '-DAOAHID_BUILD_EXAMPLES:BOOL=OFF',
+              '-DCMAKE_INSTALL_LIBDIR=lib'
+            )
+            & cmake @configureArguments
+            if ($LASTEXITCODE -ne 0) { throw "CMake configure failed for $variant" }
+            cmake --build "build/$variant" --config Release --parallel
+            if ($LASTEXITCODE -ne 0) { throw "build failed for $variant" }
+            cmake --install "build/$variant" --config Release
+            if ($LASTEXITCODE -ne 0) { throw "install failed for $variant" }
+          }
+
+          $sharedCMake = "$PWD/build/stage-shared/lib/cmake/aoahid"
+          $staticCMake = "$PWD/build/stage-static/lib/cmake/aoahid"
+          if (-not (Test-Path "$sharedCMake/aoahid-shared-targets.cmake") -or
+              (Test-Path "$sharedCMake/aoahid-static-targets.cmake")) {
+            throw "shared package component exports are contaminated"
+          }
+          if (-not (Test-Path "$staticCMake/aoahid-static-targets.cmake") -or
+              (Test-Path "$staticCMake/aoahid-shared-targets.cmake")) {
+            throw "static package component exports are contaminated"
+          }
+
+          foreach ($variant in @('shared', 'static')) {
+            New-Item -ItemType Directory -Force "build/stage-$variant/bin" | Out-Null
+            New-Item -ItemType Directory -Force "build/stage-$variant/lib/dependencies" | Out-Null
+            New-Item -ItemType Directory -Force "build/stage-$variant/share/doc/libaoahid/third-party" | Out-Null
+            New-Item -ItemType Directory -Force "build/stage-$variant/share/doc/libaoahid/third-party/source" | Out-Null
+            Copy-Item $dlls[0].FullName "build/stage-$variant/bin/"
+            Copy-Item $libs.FullName "build/stage-$variant/lib/dependencies/"
+            Copy-Item "$dependencyShare/copyright" "build/stage-$variant/share/doc/libaoahid/third-party/libusb-copyright"
+            Copy-Item "$PWD/build/dependencies/libusb-1.0.30.tar.bz2" `
+              "build/stage-$variant/share/doc/libaoahid/third-party/source/"
+            New-Item -ItemType Directory -Force `
+              "build/stage-$variant/share/doc/libaoahid/third-party/vcpkg-libusb-port" | Out-Null
+            Copy-Item "$PWD/.vcpkg/ports/libusb/vcpkg.json" `
+              "build/stage-$variant/share/doc/libaoahid/third-party/vcpkg-libusb-port/"
+            Copy-Item "$PWD/.vcpkg/ports/libusb/portfile.cmake" `
+              "build/stage-$variant/share/doc/libaoahid/third-party/vcpkg-libusb-port/"
+            Copy-Item "$PWD/.vcpkg/LICENSE.txt" `
+              "build/stage-$variant/share/doc/libaoahid/third-party/vcpkg-LICENSE.txt"
+          }
+          New-Item -ItemType Directory -Force "build/stage-static/include/libusb-1.0" | Out-Null
+          Copy-Item "$dependencyInclude/*" "build/stage-static/include/libusb-1.0/" -Recurse
+          Copy-Item $libs.FullName "build/stage-static/lib/"
+          New-Item -ItemType Directory -Force "build/stage-static/lib/pkgconfig" | Out-Null
+          Copy-Item $dependencyPc "build/stage-static/lib/pkgconfig/libusb-1.0.pc"
+          python tools/release/pkg_config_metadata.py `
+            --relocate build/stage-static/lib/pkgconfig/libusb-1.0.pc
+          if ($LASTEXITCODE -ne 0) { throw "libusb pkg-config relocation failed" }
+
+      - name: Verify real Windows libraries, ABI, and installed consumers
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $library = "$PWD/build/shared/Release/aoahid.dll"
+          $architectureInputs = @(
+            $library,
+            "$PWD/build/shared/Release/aoahid.lib",
+            "$PWD/build/static/Release/aoahid_static.lib",
+            (Get-ChildItem "$PWD/build/stage-shared/bin" -Filter '*usb*.dll' -File).FullName
+          )
+          $architectureInputs += @(
+            Get-ChildItem "$PWD/build/stage-shared/lib/dependencies" -Filter '*.lib' -File |
+              ForEach-Object { $_.FullName }
+          )
+          $architectureInputs += @(
+            Get-ChildItem "$PWD/build/stage-static/lib" -Filter '*.lib' -File |
+              ForEach-Object { $_.FullName }
+          )
+          $architectureInputs = @($architectureInputs | Sort-Object -Unique)
+          if ($architectureInputs.Count -eq 0) { throw "no Windows architecture inputs were found" }
+          foreach ($binary in $architectureInputs) {
+            $headers = & llvm-readobj --file-headers $binary
+            if ($LASTEXITCODE -ne 0) { throw "llvm-readobj failed for $binary" }
+            $machines = @(
+              $headers | Select-String -Pattern '^\s*Machine:\s+([^\s(]+)' |
+                ForEach-Object { $_.Matches[0].Groups[1].Value }
+            )
+            if ($machines.Count -eq 0) { throw "$binary has no inspected COFF Machine entry" }
+            $unexpectedMachines = @($machines | Where-Object {
+              $_ -ne '${{ matrix.coff_machine }}'
+            })
+            if ($unexpectedMachines.Count -ne 0) {
+              throw "$binary contains unexpected COFF Machine entries: $($unexpectedMachines -join ', ')"
+            }
+          }
+          $imports = & llvm-readobj --coff-imports $library
+          if ($LASTEXITCODE -ne 0 -or -not ($imports -match '(?i)libusb[^\s]*\.dll')) {
+            throw "aoahid.dll has no inspected dynamic import for libusb"
+          }
+          $staticDirectives = & llvm-readobj --coff-directives `
+            "$PWD/build/static/Release/aoahid_static.lib"
+          if ($LASTEXITCODE -ne 0) { throw "static archive directive inspection failed" }
+          if ($staticDirectives -match '(?i)/EXPORT:aoahid_') {
+            throw "static archive contains DLL export directives"
+          }
+          $env:PATH = "$PWD/build/vcpkg_installed/${{ matrix.triplet }}/bin;$env:PATH"
+          python tools/symbol-lint/symbol_lint.py `
+            --header include/aoahid.h `
+            --binary $library `
+            --dll-directory "$PWD/build/vcpkg_installed/${{ matrix.triplet }}/bin"
+          if ($LASTEXITCODE -ne 0) { throw "ABI symbol lint failed" }
+          cmake -S tools/release/consumer -B build/consumer-shared `
+            -DCMAKE_PREFIX_PATH="$PWD/build/stage-shared" `
+            -DAOAHID_FIND_COMPONENTS=shared
+          if ($LASTEXITCODE -ne 0) { throw "consumer configure failed" }
+          cmake --build build/consumer-shared --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw "consumer build failed" }
+          $env:PATH = "$PWD/build/stage-shared/bin;$env:PATH"
+          & build/consumer-shared/Release/aoahid_consumer.exe
+          if ($LASTEXITCODE -ne 0) { throw "consumer execution failed" }
+          cmake -S tools/release/consumer -B build/consumer-static `
+            -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=TRUE `
+            -DCMAKE_PREFIX_PATH="$PWD/build/stage-static" `
+            -DAOAHID_FIND_COMPONENTS=static `
+            -DAOAHID_CONSUMER_TARGET=aoahid::aoahid_static
+          if ($LASTEXITCODE -ne 0) { throw "static consumer configure failed" }
+          cmake --build build/consumer-static --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw "static consumer build failed" }
+          $env:PATH = "$PWD/build/stage-static/bin;$env:PATH"
+          & build/consumer-static/Release/aoahid_consumer.exe
+          if ($LASTEXITCODE -ne 0) { throw "static consumer execution failed" }
+          $consumerExports = & llvm-readobj --coff-exports `
+            "$PWD/build/consumer-static/Release/aoahid_consumer.exe"
+          if ($LASTEXITCODE -ne 0) { throw "static consumer export inspection failed" }
+          if ($consumerExports -match '(?m)^\s*Name:\s*aoahid_') {
+            throw "static consumer executable exports libaoahid C ABI symbols"
+          }
+          cmake -S tools/release/consumer -B build/consumer-wrong-static `
+            -DCMAKE_PREFIX_PATH="$PWD/build/stage-shared" `
+            -DAOAHID_FIND_COMPONENTS=static
+          if ($LASTEXITCODE -eq 0) {
+            throw "shared-only package accepted the unavailable static component"
+          }
+          cmake -S tools/release/consumer -B build/consumer-wrong-shared `
+            -DCMAKE_PREFIX_PATH="$PWD/build/stage-static" `
+            -DAOAHID_FIND_COMPONENTS=shared
+          if ($LASTEXITCODE -eq 0) {
+            throw "static-only package accepted the unavailable shared component"
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: Package Windows distributions
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          $compiler = "${{ matrix.generator }}"
+          $cmakeVersion = (cmake --version | Select-Object -First 1)
+          $port = Get-Content "$PWD/.vcpkg/ports/libusb/vcpkg.json" -Raw | ConvertFrom-Json
+          $versionProperties = @($port.PSObject.Properties | Where-Object {
+            $_.Name -in @('version', 'version-semver', 'version-string', 'version-date')
+          })
+          if ($versionProperties.Count -ne 1) {
+            throw "pinned libusb port has no unique version field"
+          }
+          $libusbVersion = [string]$versionProperties[0].Value
+          if ($libusbVersion -ne '1.0.30') {
+            throw "pinned vcpkg libusb version does not match the bundled 1.0.30 source"
+          }
+          $portRevision = $port.'port-version'
+          $libusbPortVersion = if ($null -ne $portRevision -and $portRevision -ne 0) {
+            "$libusbVersion#$portRevision"
+          } else {
+            $libusbVersion
+          }
+          $prefix = "libaoahid-${{ needs.validate.outputs.version }}-windows-${{ matrix.arch }}"
+          foreach ($variant in @('shared', 'static')) {
+            python tools/release/package_release.py `
+              --source-root . `
+              --stage "build/stage-$variant" `
+              --out-dir out `
+              --base-name "$prefix-$variant" `
+              --version '${{ needs.validate.outputs.version }}' `
+              --platform windows `
+              --arch '${{ matrix.arch }}' `
+              --variant $variant `
+              --source-sha '${{ needs.validate.outputs.source_sha }}' `
+              --created-epoch '${{ needs.validate.outputs.epoch }}' `
+              --libusb-version $libusbVersion `
+              --build-metadata "runner_image=$env:ImageOS" `
+              --build-metadata "runner_image_version=$env:ImageVersion" `
+              --build-metadata "compiler=$compiler" `
+              --build-metadata "cmake=$cmakeVersion" `
+              --build-metadata 'vcpkg=ddd0023b0eee70986e42ed49d9d4afb8098f212e' `
+              --build-metadata 'vcpkg_triplet=${{ matrix.triplet }}' `
+              --build-metadata "vcpkg_libusb=$libusbPortVersion" `
+              --build-metadata 'vcpkg_libusb_source_sha512=3251c9f41e900efa13caf981483f46886c8434bf4c30f3fd3073921b06be9977cebcf4a18f7bc46db86e33d7f19752296377be9050abfb8d887ffeb377864647' `
+              --build-metadata 'libusb_source_commit=87a55632db62c9bdc58cd31d3ccfa673f1bb017f' `
+              --build-metadata 'libusb_source_archive_sha256=fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf'
+            if ($LASTEXITCODE -ne 0) { throw "packaging failed for $variant" }
+          }
+
+      - name: Upload package pair
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-${{ matrix.platform }}-${{ matrix.arch }}
+          path: out/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  binding-packages:
+    name: Build and validate Python/NuGet packages
+    needs: validate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      AOAHID_RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      SOURCE_DATE_EPOCH: ${{ needs.validate.outputs.epoch }}
+      PYTHONHASHSEED: '0'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Select exact .NET SDK with deterministic NuGet pack support
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: '10.0.400'
+
+      - name: Build and test a reproducible Python wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv build/bindings/build-env
+          build/bindings/build-env/bin/python -m pip install \
+            --disable-pip-version-check \
+            --require-hashes \
+            --only-binary=:all: \
+            --requirement tools/release/python-build-requirements.txt
+          build/bindings/build-env/bin/python -m build --no-isolation \
+            --wheel --outdir build/bindings/python-dist \
+            bindings/python
+          build/bindings/build-env/bin/python -m build --no-isolation \
+            --wheel --outdir build/bindings/python-rebuild \
+            bindings/python
+          test "$(find build/bindings/python-dist -maxdepth 1 -type f -name '*.whl' | wc -l)" -eq 1
+          test "$(find build/bindings/python-rebuild -maxdepth 1 -type f -name '*.whl' | wc -l)" -eq 1
+          test "$(sha256sum build/bindings/python-dist/*.whl | cut -d' ' -f1)" = \
+            "$(sha256sum build/bindings/python-rebuild/*.whl | cut -d' ' -f1)"
+          python -m venv build/bindings/python-venv
+          build/bindings/python-venv/bin/python -m pip install \
+            --disable-pip-version-check build/bindings/python-dist/*.whl
+          build/bindings/python-venv/bin/python -I - <<'PY'
+          import os
+
+          import aoahid
+
+          expected = tuple(
+              int(component)
+              for component in os.environ["AOAHID_RELEASE_VERSION"].split(".")
+          )
+          actual = (
+              aoahid.AOAHID_VERSION_MAJOR,
+              aoahid.AOAHID_VERSION_MINOR,
+              aoahid.AOAHID_VERSION_PATCH,
+          )
+          if actual != expected:
+              raise SystemExit(f"binding version {actual!r} != release version {expected!r}")
+          PY
+
+      - name: Build and test a reproducible NuGet package
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet restore bindings/csharp/AoaHid/AoaHid.csproj
+          for output in nuget nuget-rebuild; do
+            dotnet pack bindings/csharp/AoaHid/AoaHid.csproj \
+              --configuration Release \
+              --no-restore \
+              --output "build/bindings/$output" \
+              -p:PackageVersion='${{ needs.validate.outputs.version }}' \
+              -p:ContinuousIntegrationBuild=true \
+              -p:Deterministic=true \
+              -p:DeterministicTimestamp="$SOURCE_DATE_EPOCH" \
+              -p:RepositoryCommit='${{ needs.validate.outputs.source_sha }}'
+          done
+          test "$(find build/bindings/nuget -maxdepth 1 -type f -name '*.nupkg' | wc -l)" -eq 1
+          test "$(find build/bindings/nuget-rebuild -maxdepth 1 -type f -name '*.nupkg' | wc -l)" -eq 1
+          test "$(sha256sum build/bindings/nuget/*.nupkg | cut -d' ' -f1)" = \
+            "$(sha256sum build/bindings/nuget-rebuild/*.nupkg | cut -d' ' -f1)"
+          dotnet new console --framework net8.0 --output build/bindings/nuget-consumer
+          dotnet add build/bindings/nuget-consumer package AoaHid \
+            --version '${{ needs.validate.outputs.version }}' \
+            --source "$PWD/build/bindings/nuget"
+          printf '%s\n' \
+            'using System;' \
+            'using AoaHid;' \
+            'var expectedText = Environment.GetEnvironmentVariable("AOAHID_RELEASE_VERSION");' \
+            'var parts = expectedText?.Split(new[] { "." }, StringSplitOptions.None);' \
+            'if (parts is null || parts.Length != 3 ||' \
+            '    !uint.TryParse(parts[0], out var major) ||' \
+            '    !uint.TryParse(parts[1], out var minor) ||' \
+            '    !uint.TryParse(parts[2], out var patch)) return 2;' \
+            'if (Native.AOAHID_VERSION_MAJOR != major || Native.AOAHID_VERSION_MINOR != minor || Native.AOAHID_VERSION_PATCH != patch) return 1;' \
+            'return 0;' \
+            > build/bindings/nuget-consumer/Program.cs
+          dotnet run --project build/bindings/nuget-consumer --configuration Release
+
+      - name: Validate exact package metadata and native dependency boundary
+        run: >-
+          python tools/release/validate_binding_packages.py
+          --python-directory build/bindings/python-dist
+          --nuget-directory build/bindings/nuget
+          --csharp-project bindings/csharp/AoaHid/AoaHid.csproj
+          --version '${{ needs.validate.outputs.version }}'
+
+      - name: Upload validated binding packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: binding-packages
+          path: |
+            build/bindings/python-dist/*.whl
+            build/bindings/nuget/*.nupkg
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - validate
+      - build
+      - binding-packages
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Check out source and tag history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+
+      - name: Download all native packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create deterministic source archive from the tagged commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/release/package_source.py \
+            --repository-root . \
+            --out-dir dist \
+            --version '${{ needs.validate.outputs.version }}' \
+            --source-sha '${{ needs.validate.outputs.source_sha }}' \
+            --created-epoch '${{ needs.validate.outputs.epoch }}'
+
+      - name: Revalidate and assemble release manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse "${GITHUB_REF_NAME}^{commit}")" = "$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          python tools/check_input_provenance.py
+          python tools/release/validate_release.py --tag "$GITHUB_REF_NAME" --notes-out build/release-notes.md
+          python tools/release/collect_release.py \
+            --directory dist \
+            --source-root . \
+            --version '${{ needs.validate.outputs.version }}' \
+            --source-sha '${{ needs.validate.outputs.source_sha }}' \
+            --created-epoch '${{ needs.validate.outputs.epoch }}'
+          # No bare shared object is ever uploaded: a redistributable asset that
+          # carries the libusb runtime must carry libusb's license and
+          # corresponding source in the same distribution unit. Re-inspect the
+          # runtime bundles that replace it, from the uploaded bytes.
+          mapfile -t linux_runtime_bundles < <(
+            find dist -maxdepth 1 -type f -name 'libaoahid-*-linux-*-runtime.tar.gz' -print | sort
+          )
+          test "${#linux_runtime_bundles[@]}" -eq 2
+          rm -rf build/runtime-bundle-check
+          mkdir -p build/runtime-bundle-check
+          for bundle in "${linux_runtime_bundles[@]}"; do
+            tar -xzf "$bundle" -C build/runtime-bundle-check
+          done
+          mapfile -t bundled_runtimes < <(
+            find build/runtime-bundle-check -type f -name 'libaoahid.so.*' -print | sort
+          )
+          test "${#bundled_runtimes[@]}" -eq 2
+          python tools/release/glibc_versions.py \
+            --root build/runtime-bundle-check \
+            --output build/runtime-bundle-glibc-requirements.json \
+            --maximum GLIBC_2.35 \
+            "${bundled_runtimes[@]}"
+          python - <<'PY'
+          import json
+          import tarfile
+          from pathlib import Path
+
+          inspected_document = json.loads(
+              Path("build/runtime-bundle-glibc-requirements.json").read_text(encoding="utf-8")
+          )
+          manifest = json.loads(Path("dist/release-manifest.json").read_text(encoding="utf-8"))
+          recorded = {
+              target["runtime_glibc_maximum_required"]
+              for target in manifest["targets"]
+              if target["platform"] == "linux" and target["variant"] == "shared"
+          }
+          inspected = {item["maximum_required"] for item in inspected_document["files"]}
+          if inspected != recorded:
+              raise SystemExit(
+                  f"runtime bundle GLIBC requirements {sorted(inspected)!r} "
+                  f"disagree with manifest {sorted(recorded)!r}"
+              )
+          required = (
+              "share/doc/libaoahid/LICENSE",
+              "share/doc/libaoahid/NOTICE",
+              "share/doc/libaoahid/THIRD_PARTY_NOTICES.md",
+              "share/doc/libaoahid/third-party/libusb-copyright",
+              "share/doc/libaoahid/third-party/source/libusb-1.0.30.tar.bz2",
+          )
+          for target in manifest["targets"]:
+              name = target.get("runtime_bundle")
+              if name is None or not name.endswith(".tar.gz"):
+                  continue
+              root = name.removesuffix(".tar.gz")
+              with tarfile.open(Path("dist") / name, "r:gz") as bundle:
+                  members = set(bundle.getnames())
+              missing = [item for item in required if f"{root}/{item}" not in members]
+              if missing:
+                  raise SystemExit(f"{name} is missing license material: {missing}")
+          PY
+
+      - name: Require a successful CI run for the exact tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 90); do
+            if ! response="$(gh api --paginate --slurp \
+                -H 'Accept: application/vnd.github+json' \
+                -H 'X-GitHub-Api-Version: 2026-03-10' \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SOURCE_SHA&per_page=100")"; then
+              echo "GitHub API query failed (attempt $attempt/90); retrying." >&2
+              sleep 20
+              continue
+            fi
+            if jq -e --arg sha "$SOURCE_SHA" '
+              any(.[] | .workflow_runs[];
+                  .head_sha == $sha and
+                  (.event == "push" or .event == "workflow_dispatch") and
+                  .status == "completed" and .conclusion == "success")
+            ' <<<"$response" >/dev/null; then
+              exit 0
+            fi
+            active="$(jq --arg sha "$SOURCE_SHA" '[
+              .[] | .workflow_runs[] |
+              select(.head_sha == $sha and
+                     (.event == "push" or .event == "workflow_dispatch") and
+                     .status != "completed")
+            ] | length' <<<"$response")"
+            failed="$(jq --arg sha "$SOURCE_SHA" '[
+              .[] | .workflow_runs[] |
+              select(.head_sha == $sha and
+                     (.event == "push" or .event == "workflow_dispatch") and
+                     .status == "completed" and .conclusion != "success")
+            ] | length' <<<"$response")"
+            if test "$active" -eq 0 && test "$failed" -gt 0; then
+              echo "CI completed without success for tagged commit $SOURCE_SHA" >&2
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "No successful CI run appeared for tagged commit $SOURCE_SHA" >&2
+          exit 1
+
+      - name: Upload an owned draft by release ID, then publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_headers=(
+            -H 'Accept: application/vnd.github+json'
+            -H 'X-GitHub-Api-Version: 2026-03-10'
+          )
+
+          tag_ref="$(gh api "${api_headers[@]}" \
+            "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME")"
+          test "$(jq -r '.ref' <<<"$tag_ref")" = "refs/tags/$GITHUB_REF_NAME"
+          # Compare the exact unpeeled remote ref with the fully fetched local
+          # tag object.  git's ^{commit} peel (validated again here) follows any
+          # annotated-tag chain and rejects a final tree/blob, so this does not
+          # depend on a one-level REST tag-object assumption.
+          test "$(jq -r '.object.sha' <<<"$tag_ref")" = \
+            "$(git rev-parse "$GITHUB_REF_NAME")"
+          test "$(git rev-parse "${GITHUB_REF_NAME}^{commit}")" = \
+            '${{ needs.validate.outputs.source_sha }}'
+
+          release_pages="$(gh api "${api_headers[@]}" --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/releases?per_page=100")"
+          if jq -e --arg tag "$GITHUB_REF_NAME" \
+              'any(.[][]; .tag_name == $tag)' <<<"$release_pages" >/dev/null; then
+            echo "A GitHub Release already exists for $GITHUB_REF_NAME; refusing to overwrite it." >&2
+            exit 1
+          fi
+
+          owner_marker="<!-- libaoahid-release-owner: repository=$GITHUB_REPOSITORY; run_id=$GITHUB_RUN_ID; run_attempt=$GITHUB_RUN_ATTEMPT; source_sha=${{ needs.validate.outputs.source_sha }} -->"
+          release_name="$GITHUB_REF_NAME"
+          cp build/release-notes.md build/release-notes-owned.md
+          printf '\n%s\n' "$owner_marker" >> build/release-notes-owned.md
+
+          release_id=""
+          cleanup_armed=1
+          cleanup_owned_draft() {
+            status=$?
+            trap - EXIT INT TERM
+            owned_release_id="$release_id"
+            if test "$cleanup_armed" = 1 && ! [[ "$owned_release_id" =~ ^[0-9]+$ ]]; then
+              recovery_pages="$(gh api "${api_headers[@]}" --paginate --slurp \
+                "repos/$GITHUB_REPOSITORY/releases?per_page=100" 2>/dev/null || true)"
+              owned_release_id="$(jq -r --arg tag "$GITHUB_REF_NAME" \
+                --arg marker "$owner_marker" '
+                  [.[][] |
+                    select(.tag_name == $tag and .draft == true and
+                           ((.body // "") | contains($marker)))] |
+                  if length == 1 then .[0].id else empty end
+                ' <<<"$recovery_pages" 2>/dev/null || true)"
+            fi
+            if test "$cleanup_armed" = 1 && [[ "$owned_release_id" =~ ^[0-9]+$ ]]; then
+              current_release="$(gh api "${api_headers[@]}" \
+                "repos/$GITHUB_REPOSITORY/releases/$owned_release_id" 2>/dev/null || true)"
+              if jq -e --argjson id "$owned_release_id" --arg tag "$GITHUB_REF_NAME" \
+                  --arg marker "$owner_marker" \
+                  '.id == $id and .tag_name == $tag and .draft == true and
+                   ((.body // "") | contains($marker))' \
+                  <<<"$current_release" >/dev/null 2>&1; then
+                for delete_attempt in $(seq 1 5); do
+                  if gh api "${api_headers[@]}" --method DELETE --silent \
+                      "repos/$GITHUB_REPOSITORY/releases/$owned_release_id"; then
+                    break
+                  fi
+                  sleep "$delete_attempt"
+                done
+                final_status="$(curl --proto '=https' --tlsv1.2 \
+                  --silent --show-error --output build/release-cleanup-response.json \
+                  --write-out '%{http_code}' \
+                  -H 'Accept: application/vnd.github+json' \
+                  -H "Authorization: Bearer $GH_TOKEN" \
+                  -H 'X-GitHub-Api-Version: 2026-03-10' \
+                  "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/$owned_release_id" \
+                  || true)"
+                if test "$final_status" != 404; then
+                  echo "Owned draft $owned_release_id was not deleted; final GET returned HTTP $final_status." >&2
+                  status=1
+                fi
+              fi
+            fi
+            exit "$status"
+          }
+          trap cleanup_owned_draft EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          create_response="$(gh api "${api_headers[@]}" --method POST \
+            "repos/$GITHUB_REPOSITORY/releases" \
+            -f "tag_name=$GITHUB_REF_NAME" \
+            -f "name=$release_name" \
+            -F body=@build/release-notes-owned.md \
+            -F draft=true \
+            -F prerelease=false)"
+          release_id="$(jq -er '.id | select(type == "number") | tostring' \
+            <<<"$create_response")"
+          [[ "$release_id" =~ ^[0-9]+$ ]]
+          upload_url="$(jq -er \
+            '.upload_url | select(type == "string") | sub("\\{.*$"; "")' \
+            <<<"$create_response")"
+          test "$upload_url" = \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id/assets"
+          jq -e --argjson id "$release_id" --arg tag "$GITHUB_REF_NAME" \
+            --arg name "$release_name" --arg marker "$owner_marker" \
+            '.id == $id and .tag_name == $tag and .name == $name and
+             .draft == true and .prerelease == false and
+             ((.body // "") | contains($marker))' \
+            <<<"$create_response" >/dev/null
+
+          shopt -s nullglob
+          assets=(
+            dist/libaoahid-*
+            dist/release-manifest.json
+            dist/SHA256SUMS
+          )
+          shopt -u nullglob
+          test "${#assets[@]}" -eq 33
+          declare -A expected_asset_names=()
+          declare -A expected_asset_sizes=()
+          declare -A expected_asset_digests=()
+          for asset in "${assets[@]}"; do
+            test -f "$asset"
+            asset_name="${asset##*/}"
+            [[ "$asset_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+            test -z "${expected_asset_names[$asset_name]+present}"
+            expected_asset_names["$asset_name"]=1
+            asset_size="$(wc -c < "$asset")"
+            asset_size="${asset_size//[[:space:]]/}"
+            [[ "$asset_size" =~ ^[0-9]+$ ]]
+            asset_digest="sha256:$(sha256sum "$asset" | awk '{print $1}')"
+            [[ "$asset_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            expected_asset_sizes["$asset_name"]="$asset_size"
+            expected_asset_digests["$asset_name"]="$asset_digest"
+            uploaded="$(curl --proto '=https' --tlsv1.2 --fail-with-body \
+              --silent --show-error --request POST \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'X-GitHub-Api-Version: 2026-03-10' \
+              -H 'Content-Type: application/octet-stream' \
+              --data-binary "@$asset" \
+              "$upload_url?name=$asset_name")"
+            jq -e --arg name "$asset_name" --argjson size "$asset_size" \
+              --arg digest "$asset_digest" \
+              '(.id | type == "number") and .name == $name and
+               .state == "uploaded" and .size == $size and has("digest") and
+               (.digest == null or .digest == $digest)' \
+              <<<"$uploaded" >/dev/null
+          done
+
+          verify_exact_asset_set() {
+            uploaded_pages="$(gh api "${api_headers[@]}" --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100")"
+            test "$(jq '[.[][]] | length' <<<"$uploaded_pages")" \
+              -eq "${#expected_asset_names[@]}"
+            for asset_name in "${!expected_asset_names[@]}"; do
+              asset_record="$(jq -cer --arg name "$asset_name" '
+                [.[][] | select(.name == $name)] |
+                if length == 1 then .[0] else empty end
+              ' <<<"$uploaded_pages")"
+              jq -e \
+                --argjson size "${expected_asset_sizes[$asset_name]}" \
+                --arg digest "${expected_asset_digests[$asset_name]}" \
+                '.state == "uploaded" and .size == $size and has("digest") and
+                 (.digest == null or .digest == $digest)' \
+                <<<"$asset_record" >/dev/null
+              if test "$(jq -r '.digest' <<<"$asset_record")" = null; then
+                asset_id="$(jq -er '.id | select(type == "number") | tostring' \
+                  <<<"$asset_record")"
+                [[ "$asset_id" =~ ^[0-9]+$ ]]
+                downloaded_asset="build/release-asset-$asset_id"
+                curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
+                  --fail-with-body --location --silent --show-error \
+                  --output "$downloaded_asset" \
+                  -H 'Accept: application/octet-stream' \
+                  -H "Authorization: Bearer $GH_TOKEN" \
+                  -H 'X-GitHub-Api-Version: 2026-03-10' \
+                  "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+                test "$(wc -c < "$downloaded_asset" | tr -d '[:space:]')" = \
+                  "${expected_asset_sizes[$asset_name]}"
+                test "sha256:$(sha256sum "$downloaded_asset" | awk '{print $1}')" = \
+                  "${expected_asset_digests[$asset_name]}"
+              fi
+            done
+          }
+          verify_exact_asset_set
+
+          owned_before_publish="$(gh api "${api_headers[@]}" \
+            "repos/$GITHUB_REPOSITORY/releases/$release_id")"
+          jq -e --argjson id "$release_id" --arg tag "$GITHUB_REF_NAME" \
+            --arg name "$release_name" --arg marker "$owner_marker" \
+            '.id == $id and .tag_name == $tag and .name == $name and
+             .draft == true and .prerelease == false and
+             ((.body // "") | contains($marker))' \
+            <<<"$owned_before_publish" >/dev/null
+
+          final_release=""
+          public_release_matches() {
+            jq -e --argjson id "$release_id" --arg tag "$GITHUB_REF_NAME" \
+              --arg name "$release_name" --rawfile body build/release-notes.md \
+              '.id == $id and .tag_name == $tag and .name == $name and
+               .draft == false and .prerelease == false and .body == $body' \
+              <<<"$final_release" >/dev/null 2>&1
+          }
+          if ! final_release="$(gh api "${api_headers[@]}" --method PATCH \
+              "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+              -F body=@build/release-notes.md -F draft=false)" ||
+             ! public_release_matches; then
+            # PATCH may have reached GitHub even if its response was lost.
+            # Retry the read before deciding whether the owned object is still
+            # a recoverable draft or is already a public release.
+            final_release=""
+            for publish_read_attempt in $(seq 1 5); do
+              if final_release="$(gh api "${api_headers[@]}" \
+                  "repos/$GITHUB_REPOSITORY/releases/$release_id")" &&
+                 public_release_matches; then
+                break
+              fi
+              final_release=""
+              sleep "$publish_read_attempt"
+            done
+          fi
+          public_release_matches
+          # The complete asset set was already byte-verified while the release
+          # was still a recoverable draft.  Once publication is confirmed,
+          # disarm draft cleanup without another fallible API request.
+          cleanup_armed=0
+          trap - EXIT INT TERM
+
+  publish-pypi:
+    name: Publish Python wheel through PyPI Trusted Publishing
+    if: vars.AOAHID_PUBLISH_BINDINGS == 'true'
+    needs:
+      - publish
+      - binding-packages
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download validated binding packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: binding-packages
+          path: build/bindings
+
+      - name: Publish the wheel without a long-lived credential
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+        with:
+          packages-dir: build/bindings/python-dist
+          verify-metadata: true
+          attestations: true
+
+  publish-nuget:
+    name: Publish NuGet package with a scoped API key
+    if: vars.AOAHID_PUBLISH_BINDINGS == 'true'
+    needs:
+      - publish
+      - binding-packages
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Download validated binding packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: binding-packages
+          path: build/bindings
+
+      - name: Select exact .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: '10.0.400'
+
+      - name: Publish the exact package
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$NUGET_API_KEY"
+          mapfile -t packages < <(find build/bindings/nuget -maxdepth 1 \
+            -type f -name 'AoaHid.*.nupkg' -print)
+          test "${#packages[@]}" -eq 1
+          dotnet nuget push "${packages[0]}" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json

@@ -1,0 +1,12 @@
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  performance-*,
+  portability-*,
+  readability-identifier-naming
+WarningsAsErrors: '*'
+HeaderFilterRegex: '^(include|src)/'
+CheckOptions:
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case

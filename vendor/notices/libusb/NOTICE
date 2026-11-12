@@ -1,0 +1,6 @@
+libusb 1.0.30, commit 87a55632db62c9bdc58cd31d3ccfa673f1bb017f
+https://github.com/libusb/libusb
+LGPL-2.1-or-later; see COPYING and retained source copyright notices.
+Release bundling must include corresponding source and build instructions.
+Shared library replacement and reverse engineering for debugging modifications
+are permitted under the applicable LGPL terms. Cordgeist's own source remains MIT.

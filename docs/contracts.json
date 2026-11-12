@@ -1,0 +1,4570 @@
+{
+  "actionRequest": {
+    "$defs": {
+      "Input": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "tap",
+                "type": "string"
+              },
+              "point": {
+                "$ref": "#/$defs/Point"
+              }
+            },
+            "required": [
+              "kind",
+              "point"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "duration_ms": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "from": {
+                "$ref": "#/$defs/Point"
+              },
+              "kind": {
+                "const": "swipe",
+                "type": "string"
+              },
+              "to": {
+                "$ref": "#/$defs/Point"
+              }
+            },
+            "required": [
+              "kind",
+              "from",
+              "to",
+              "duration_ms"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "duration_ms": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "hold",
+                "type": "string"
+              },
+              "point": {
+                "$ref": "#/$defs/Point"
+              }
+            },
+            "required": [
+              "kind",
+              "point",
+              "duration_ms"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "type",
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "text"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "key",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "key"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "LeaseAuth": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bootId": {
+            "type": "string"
+          },
+          "credential": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "fence": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "leaseId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bootId",
+          "deviceId",
+          "leaseId",
+          "credential",
+          "attachment",
+          "fence"
+        ],
+        "type": "object"
+      },
+      "Point": {
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "y": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "auth": {
+        "$ref": "#/$defs/LeaseAuth"
+      },
+      "frameId": {
+        "type": "string"
+      },
+      "input": {
+        "$ref": "#/$defs/Input"
+      },
+      "seq": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "auth",
+      "seq",
+      "frameId",
+      "input"
+    ],
+    "title": "ActionRequest",
+    "type": "object"
+  },
+  "capability": {
+    "$defs": {
+      "Evidence": {
+        "enum": [
+          "unavailable",
+          "detected",
+          "verified"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+      "evidence": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "profile": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "reason": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "evidence",
+      "reason"
+    ],
+    "title": "Capability",
+    "type": "object"
+  },
+  "error": {
+    "$defs": {
+      "ErrorCode": {
+        "enum": [
+          "protocol-version-unsupported",
+          "backend-unavailable",
+          "device-identity-ambiguous",
+          "lease-invalid",
+          "lease-expired",
+          "leased",
+          "geometry-changed",
+          "frame-expired",
+          "invalid-request",
+          "mapping-unverified",
+          "unsupported-character",
+          "unsupported-key",
+          "receipt-expired",
+          "sequence-mismatch",
+          "queue-full",
+          "native-cleanup-pending",
+          "input-outcome-unknown",
+          "capture-unavailable",
+          "metadata-unsupported",
+          "ocr-unavailable",
+          "ocr-ambiguous",
+          "media-partial-result",
+          "process-timeout",
+          "process-cancelled",
+          "output-limit",
+          "process-failed",
+          "adb-unauthorized",
+          "device-disconnected"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "code": {
+        "$ref": "#/$defs/ErrorCode"
+      },
+      "phase": {
+        "type": "string"
+      },
+      "recovery": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "code",
+      "phase",
+      "recovery"
+    ],
+    "title": "ApiError",
+    "type": "object"
+  },
+  "frame": {
+    "$defs": {
+      "CoordinateSpace": {
+        "enum": [
+          "returned-image-pixels",
+          "screen-pixels"
+        ],
+        "type": "string"
+      },
+      "Provenance": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bootId": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "fence": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "geometry": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "leaseId": {
+            "type": "string"
+          },
+          "mapping": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bootId",
+          "deviceId",
+          "leaseId",
+          "attachment",
+          "fence",
+          "geometry",
+          "mapping"
+        ],
+        "type": "object"
+      },
+      "Rotation": {
+        "enum": [
+          "r0",
+          "r90",
+          "r180",
+          "r270"
+        ],
+        "type": "string"
+      },
+      "Size": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "width": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "capturedMs": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "coordinateSpace": {
+        "$ref": "#/$defs/CoordinateSpace"
+      },
+      "display": {
+        "$ref": "#/$defs/Size"
+      },
+      "displayId": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "id": {
+        "type": "string"
+      },
+      "image": {
+        "$ref": "#/$defs/Size"
+      },
+      "provenance": {
+        "$ref": "#/$defs/Provenance"
+      },
+      "rotation": {
+        "$ref": "#/$defs/Rotation"
+      }
+    },
+    "required": [
+      "id",
+      "provenance",
+      "capturedMs",
+      "image",
+      "display",
+      "rotation",
+      "displayId",
+      "coordinateSpace"
+    ],
+    "title": "Frame",
+    "type": "object"
+  },
+  "leaseGrant": {
+    "$defs": {
+      "LeaseAuth": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bootId": {
+            "type": "string"
+          },
+          "credential": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "fence": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "leaseId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bootId",
+          "deviceId",
+          "leaseId",
+          "credential",
+          "attachment",
+          "fence"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "auth": {
+        "$ref": "#/$defs/LeaseAuth"
+      },
+      "idleDeadlineMs": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "nextSeq": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "auth",
+      "idleDeadlineMs",
+      "nextSeq"
+    ],
+    "title": "LeaseGrant",
+    "type": "object"
+  },
+  "mediaResult": {
+    "$defs": {
+      "Stage": {
+        "oneOf": [
+          {
+            "properties": {
+              "detail": {
+                "type": "boolean"
+              },
+              "state": {
+                "const": "known",
+                "type": "string"
+              }
+            },
+            "required": [
+              "state",
+              "detail"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "state": {
+                "const": "unknown",
+                "type": "string"
+              }
+            },
+            "required": [
+              "state"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "detail": {
+                "type": "string"
+              },
+              "state": {
+                "const": "error",
+                "type": "string"
+              }
+            },
+            "required": [
+              "state",
+              "detail"
+            ],
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+      "bytes": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "copied": {
+        "$ref": "#/$defs/Stage"
+      },
+      "destination": {
+        "type": "string"
+      },
+      "indexed": {
+        "$ref": "#/$defs/Stage"
+      },
+      "mime": {
+        "type": "string"
+      },
+      "pickerVerified": {
+        "$ref": "#/$defs/Stage"
+      },
+      "uri": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "copied",
+      "indexed",
+      "pickerVerified",
+      "destination",
+      "bytes",
+      "mime"
+    ],
+    "title": "MediaResult",
+    "type": "object"
+  },
+  "operations": [
+    {
+      "effect": "read",
+      "frame": false,
+      "lease": true,
+      "mcp": false,
+      "method": "observations.elements"
+    },
+    {
+      "effect": "read",
+      "frame": false,
+      "lease": true,
+      "mcp": false,
+      "method": "apps.list"
+    },
+    {
+      "effect": "input",
+      "frame": false,
+      "lease": true,
+      "mcp": false,
+      "method": "input.android"
+    },
+    {
+      "effect": "control",
+      "frame": false,
+      "lease": false,
+      "mcp": false,
+      "method": "setup.calibrate"
+    },
+    {
+      "effect": "read",
+      "frame": false,
+      "lease": false,
+      "mcp": true,
+      "method": "system.status"
+    },
+    {
+      "effect": "read",
+      "frame": false,
+      "lease": false,
+      "mcp": true,
+      "method": "system.doctor"
+    },
+    {
+      "effect": "read",
+      "frame": false,
+      "lease": false,
+      "mcp": true,
+      "method": "devices.list"
+    },
+    {
+      "effect": "control",
+      "frame": false,
+      "lease": false,
+      "mcp": true,
+      "method": "leases.acquire"
+    },
+    {
+      "effect": "control",
+      "frame": false,
+      "lease": true,
+      "mcp": true,
+      "method": "leases.release"
+    },
+    {
+      "effect": "control",
+      "frame": false,
+      "lease": false,
+      "mcp": false,
+      "method": "leases.revoke"
+    },
+    {
+      "effect": "read",
+      "frame": false,
+      "lease": true,
+      "mcp": true,
+      "method": "observations.screenshot"
+    },
+    {
+      "effect": "input",
+      "frame": true,
+      "lease": true,
+      "mcp": true,
+      "method": "input.tap"
+    },
+    {
+      "effect": "input",
+      "frame": true,
+      "lease": true,
+      "mcp": true,
+      "method": "input.swipe"
+    },
+    {
+      "effect": "input",
+      "frame": true,
+      "lease": true,
+      "mcp": true,
+      "method": "input.hold"
+    },
+    {
+      "effect": "input",
+      "frame": true,
+      "lease": true,
+      "mcp": true,
+      "method": "input.type"
+    },
+    {
+      "effect": "input",
+      "frame": true,
+      "lease": true,
+      "mcp": true,
+      "method": "input.key"
+    },
+    {
+      "effect": "read",
+      "frame": false,
+      "lease": true,
+      "mcp": true,
+      "method": "actions.status"
+    },
+    {
+      "effect": "control",
+      "frame": false,
+      "lease": true,
+      "mcp": true,
+      "method": "actions.cancel"
+    },
+    {
+      "effect": "read",
+      "frame": false,
+      "lease": true,
+      "mcp": false,
+      "method": "observations.text"
+    },
+    {
+      "effect": "transfer",
+      "frame": false,
+      "lease": true,
+      "mcp": false,
+      "method": "media.push"
+    }
+  ],
+  "receipt": {
+    "$defs": {
+      "Cleanup": {
+        "enum": [
+          "neutral",
+          "pending",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "InputStatus": {
+        "enum": [
+          "not-sent",
+          "sent",
+          "partial",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "ObservationStatus": {
+        "enum": [
+          "not-requested",
+          "captured",
+          "timeout",
+          "failed"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+      "actionId": {
+        "type": "string"
+      },
+      "cancelled": {
+        "type": "boolean"
+      },
+      "cleanup": {
+        "$ref": "#/$defs/Cleanup"
+      },
+      "finishedMs": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "inputStatus": {
+        "$ref": "#/$defs/InputStatus"
+      },
+      "observationStatus": {
+        "$ref": "#/$defs/ObservationStatus"
+      },
+      "retryGuidance": {
+        "type": "string"
+      },
+      "seq": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "startedMs": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "transport": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "actionId",
+      "seq",
+      "transport",
+      "startedMs",
+      "finishedMs",
+      "inputStatus",
+      "observationStatus",
+      "cleanup",
+      "cancelled",
+      "retryGuidance"
+    ],
+    "title": "Receipt",
+    "type": "object"
+  },
+  "request": {
+    "$defs": {
+      "AndroidButton": {
+        "enum": [
+          "BACK",
+          "HOME",
+          "ENTER"
+        ],
+        "type": "string"
+      },
+      "AndroidCommand": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "launch-app",
+                "type": "string"
+              },
+              "package": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "package"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "button": {
+                "$ref": "#/$defs/AndroidButton"
+              },
+              "kind": {
+                "const": "press-button",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "button"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Call": {
+        "description": "Complete protocol-level call shapes. Catalogue entries describe the target API,\nnot a claim that the daemon or every adapter is implemented yet.",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "observations.elements",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  }
+                },
+                "required": [
+                  "auth"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "apps.list",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  }
+                },
+                "required": [
+                  "auth"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "input.android",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  },
+                  "command": {
+                    "$ref": "#/$defs/AndroidCommand"
+                  },
+                  "seq": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "auth",
+                  "seq",
+                  "command"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "setup.calibrate",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "device": {
+                    "default": null,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "probe": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "system.status",
+                "type": "string"
+              }
+            },
+            "required": [
+              "method"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "system.doctor",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "device": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "devices.list",
+                "type": "string"
+              }
+            },
+            "required": [
+              "method"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "leases.acquire",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "device": {
+                    "type": "string"
+                  },
+                  "idle_ttl_s": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "label": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "device",
+                  "reason",
+                  "idle_ttl_s"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "leases.release",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  }
+                },
+                "required": [
+                  "auth"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "leases.revoke",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "device": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "device"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "observations.screenshot",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  },
+                  "longest_edge": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "settle_ms": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "auth",
+                  "longest_edge",
+                  "settle_ms"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "input.tap",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  },
+                  "frame_id": {
+                    "type": "string"
+                  },
+                  "point": {
+                    "$ref": "#/$defs/Point"
+                  },
+                  "seq": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "auth",
+                  "seq",
+                  "frame_id",
+                  "point"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "input.swipe",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  },
+                  "duration_ms": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "frame_id": {
+                    "type": "string"
+                  },
+                  "from": {
+                    "$ref": "#/$defs/Point"
+                  },
+                  "seq": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "to": {
+                    "$ref": "#/$defs/Point"
+                  }
+                },
+                "required": [
+                  "auth",
+                  "seq",
+                  "frame_id",
+                  "from",
+                  "to",
+                  "duration_ms"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "input.hold",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  },
+                  "duration_ms": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "frame_id": {
+                    "type": "string"
+                  },
+                  "point": {
+                    "$ref": "#/$defs/Point"
+                  },
+                  "seq": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "auth",
+                  "seq",
+                  "frame_id",
+                  "point",
+                  "duration_ms"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "input.type",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  },
+                  "frame_id": {
+                    "type": "string"
+                  },
+                  "seq": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "submit": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "auth",
+                  "seq",
+                  "frame_id",
+                  "text"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "input.key",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  },
+                  "frame_id": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "seq": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "auth",
+                  "seq",
+                  "frame_id",
+                  "key"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "actions.status",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  },
+                  "seq": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "auth",
+                  "seq"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "actions.cancel",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  },
+                  "seq": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "auth",
+                  "seq"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "observations.text",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  },
+                  "frame_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "language": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "auth",
+                  "language"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "media.push",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "$ref": "#/$defs/LeaseAuth"
+                  },
+                  "kind": {
+                    "$ref": "#/$defs/MediaKind"
+                  },
+                  "seq": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "source": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "auth",
+                  "seq",
+                  "source",
+                  "kind"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "params"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "CoordinateSpace": {
+        "enum": [
+          "returned-image-pixels",
+          "screen-pixels"
+        ],
+        "type": "string"
+      },
+      "LeaseAuth": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bootId": {
+            "type": "string"
+          },
+          "credential": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "fence": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "leaseId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bootId",
+          "deviceId",
+          "leaseId",
+          "credential",
+          "attachment",
+          "fence"
+        ],
+        "type": "object"
+      },
+      "MediaKind": {
+        "enum": [
+          "image",
+          "video"
+        ],
+        "type": "string"
+      },
+      "Point": {
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "y": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "call": {
+        "$ref": "#/$defs/Call"
+      },
+      "coordinateSpace": {
+        "$ref": "#/$defs/CoordinateSpace",
+        "default": "returned-image-pixels"
+      },
+      "deadlineMs": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "observeAfter": {
+        "default": false,
+        "description": "Optional post-action screenshot. Explicit observations are independent.",
+        "type": "boolean"
+      },
+      "requestId": {
+        "type": "string"
+      },
+      "version": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "version",
+      "requestId",
+      "deadlineMs",
+      "call"
+    ],
+    "title": "Request",
+    "type": "object"
+  },
+  "response": {
+    "$defs": {
+      "ActionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "observation": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ScreenshotResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only for receipt.observationStatus=captured. No local-only path."
+          },
+          "receipt": {
+            "$ref": "#/$defs/Receipt"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "ActionStatusResult": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "actionId": {
+                "type": "string"
+              },
+              "phase": {
+                "const": "queued",
+                "type": "string"
+              },
+              "seq": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "phase",
+              "actionId",
+              "seq"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "actionId": {
+                "type": "string"
+              },
+              "phase": {
+                "const": "executing",
+                "type": "string"
+              },
+              "seq": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "phase",
+              "actionId",
+              "seq"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "$ref": "#/$defs/ActionResult"
+              },
+              "phase": {
+                "const": "final",
+                "type": "string"
+              }
+            },
+            "required": [
+              "phase",
+              "action"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ApiError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "recovery": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "phase",
+          "recovery"
+        ],
+        "type": "object"
+      },
+      "AppsResult": {
+        "additionalProperties": false,
+        "properties": {
+          "apps": {
+            "items": {
+              "$ref": "#/$defs/InstalledApp"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "apps"
+        ],
+        "type": "object"
+      },
+      "BackendKind": {
+        "enum": [
+          "unavailable",
+          "aoa-hid",
+          "fake-software-only"
+        ],
+        "type": "string"
+      },
+      "CalibrationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "$ref": "#/$defs/Size"
+          },
+          "maximumX": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maximumY": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "recovery": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "display",
+          "maximumX",
+          "maximumY",
+          "verified",
+          "recovery"
+        ],
+        "type": "object"
+      },
+      "CancelResult": {
+        "additionalProperties": false,
+        "properties": {
+          "actionId": {
+            "type": "string"
+          },
+          "cleanup": {
+            "$ref": "#/$defs/Cleanup"
+          },
+          "seq": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/$defs/CancellationState"
+          }
+        },
+        "required": [
+          "actionId",
+          "seq",
+          "state",
+          "cleanup"
+        ],
+        "type": "object"
+      },
+      "CancellationState": {
+        "enum": [
+          "requested",
+          "cancelled",
+          "already-final"
+        ],
+        "type": "string"
+      },
+      "Capability": {
+        "properties": {
+          "evidence": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "profile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "Cleanup": {
+        "enum": [
+          "neutral",
+          "pending",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "CoordinateSpace": {
+        "enum": [
+          "returned-image-pixels",
+          "screen-pixels"
+        ],
+        "type": "string"
+      },
+      "DeviceCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "aoaTouch": {
+            "$ref": "#/$defs/Capability"
+          },
+          "keyboard": {
+            "$ref": "#/$defs/Capability"
+          },
+          "keyboardLayout": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mediaScan": {
+            "$ref": "#/$defs/Capability"
+          },
+          "ocr": {
+            "$ref": "#/$defs/Capability"
+          },
+          "ocrLanguages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "screenshot": {
+            "$ref": "#/$defs/Capability"
+          },
+          "supportedKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "screenshot",
+          "aoaTouch",
+          "keyboard",
+          "supportedKeys",
+          "ocr",
+          "ocrLanguages",
+          "mediaScan"
+        ],
+        "type": "object"
+      },
+      "DeviceHealth": {
+        "enum": [
+          "discovered",
+          "identity-matched",
+          "initializing",
+          "ready",
+          "leased",
+          "degraded",
+          "quarantined",
+          "disconnected"
+        ],
+        "type": "string"
+      },
+      "DeviceSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "capabilities": {
+            "$ref": "#/$defs/DeviceCapabilities"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "health": {
+            "$ref": "#/$defs/DeviceHealth"
+          },
+          "ownerLabel": {
+            "description": "Informational label only, never an owner credential.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reasonCodes": {
+            "items": {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "deviceId",
+          "attachment",
+          "health",
+          "reasonCodes",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "DevicesResult": {
+        "additionalProperties": false,
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/$defs/DeviceSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "devices"
+        ],
+        "type": "object"
+      },
+      "DiagnosticResult": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "recovery": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "evidence",
+          "recovery"
+        ],
+        "type": "object"
+      },
+      "DoctorResult": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "$ref": "#/$defs/DeviceCapabilities"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/$defs/DiagnosticResult"
+            },
+            "type": "array"
+          },
+          "deviceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "checks",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "ElementsResult": {
+        "additionalProperties": false,
+        "properties": {
+          "elements": {
+            "items": {
+              "$ref": "#/$defs/UiElement"
+            },
+            "type": "array"
+          },
+          "frame": {
+            "$ref": "#/$defs/Frame"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "frame",
+          "elements",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "enum": [
+          "protocol-version-unsupported",
+          "backend-unavailable",
+          "device-identity-ambiguous",
+          "lease-invalid",
+          "lease-expired",
+          "leased",
+          "geometry-changed",
+          "frame-expired",
+          "invalid-request",
+          "mapping-unverified",
+          "unsupported-character",
+          "unsupported-key",
+          "receipt-expired",
+          "sequence-mismatch",
+          "queue-full",
+          "native-cleanup-pending",
+          "input-outcome-unknown",
+          "capture-unavailable",
+          "metadata-unsupported",
+          "ocr-unavailable",
+          "ocr-ambiguous",
+          "media-partial-result",
+          "process-timeout",
+          "process-cancelled",
+          "output-limit",
+          "process-failed",
+          "adb-unauthorized",
+          "device-disconnected"
+        ],
+        "type": "string"
+      },
+      "Evidence": {
+        "enum": [
+          "unavailable",
+          "detected",
+          "verified"
+        ],
+        "type": "string"
+      },
+      "Frame": {
+        "additionalProperties": false,
+        "properties": {
+          "capturedMs": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "coordinateSpace": {
+            "$ref": "#/$defs/CoordinateSpace"
+          },
+          "display": {
+            "$ref": "#/$defs/Size"
+          },
+          "displayId": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "image": {
+            "$ref": "#/$defs/Size"
+          },
+          "provenance": {
+            "$ref": "#/$defs/Provenance"
+          },
+          "rotation": {
+            "$ref": "#/$defs/Rotation"
+          }
+        },
+        "required": [
+          "id",
+          "provenance",
+          "capturedMs",
+          "image",
+          "display",
+          "rotation",
+          "displayId",
+          "coordinateSpace"
+        ],
+        "type": "object"
+      },
+      "InputStatus": {
+        "enum": [
+          "not-sent",
+          "sent",
+          "partial",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "InstalledApp": {
+        "additionalProperties": false,
+        "properties": {
+          "appName": {
+            "type": "string"
+          },
+          "packageName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "packageName",
+          "appName"
+        ],
+        "type": "object"
+      },
+      "LeaseAuth": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bootId": {
+            "type": "string"
+          },
+          "credential": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "fence": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "leaseId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bootId",
+          "deviceId",
+          "leaseId",
+          "credential",
+          "attachment",
+          "fence"
+        ],
+        "type": "object"
+      },
+      "LeaseEndResult": {
+        "additionalProperties": false,
+        "properties": {
+          "cleanup": {
+            "$ref": "#/$defs/Cleanup"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "fence": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "leaseId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "deviceId",
+          "fence",
+          "cleanup"
+        ],
+        "type": "object"
+      },
+      "LeaseGrant": {
+        "additionalProperties": false,
+        "properties": {
+          "auth": {
+            "$ref": "#/$defs/LeaseAuth"
+          },
+          "idleDeadlineMs": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "nextSeq": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "auth",
+          "idleDeadlineMs",
+          "nextSeq"
+        ],
+        "type": "object"
+      },
+      "MediaPushResult": {
+        "additionalProperties": false,
+        "properties": {
+          "media": {
+            "$ref": "#/$defs/MediaResult"
+          },
+          "receipt": {
+            "$ref": "#/$defs/Receipt"
+          }
+        },
+        "required": [
+          "receipt",
+          "media"
+        ],
+        "type": "object"
+      },
+      "MediaResult": {
+        "properties": {
+          "bytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "copied": {
+            "$ref": "#/$defs/Stage"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "indexed": {
+            "$ref": "#/$defs/Stage"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "pickerVerified": {
+            "$ref": "#/$defs/Stage"
+          },
+          "uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "copied",
+          "indexed",
+          "pickerVerified",
+          "destination",
+          "bytes",
+          "mime"
+        ],
+        "type": "object"
+      },
+      "ObservationStatus": {
+        "enum": [
+          "not-requested",
+          "captured",
+          "timeout",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "OcrWord": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "format": "float",
+            "type": "number"
+          },
+          "origin": {
+            "$ref": "#/$defs/Point"
+          },
+          "size": {
+            "$ref": "#/$defs/Size"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "confidence",
+          "origin",
+          "size"
+        ],
+        "type": "object"
+      },
+      "OperationResult": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "observations.elements",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/ElementsResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "apps.list",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/AppsResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "input.android",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/ActionResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "setup.calibrate",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/CalibrationResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "system.status",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/StatusResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "system.doctor",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/DoctorResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "devices.list",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/DevicesResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "leases.acquire",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/LeaseGrant"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "leases.release",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/LeaseEndResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "leases.revoke",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/LeaseEndResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "observations.screenshot",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/ScreenshotResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "input.tap",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/ActionResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "input.swipe",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/ActionResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "input.hold",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/ActionResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "input.type",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/ActionResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "input.key",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/ActionResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "actions.status",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/ActionStatusResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "actions.cancel",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/CancelResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "observations.text",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/TextResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "const": "media.push",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/MediaPushResult"
+              }
+            },
+            "required": [
+              "method",
+              "value"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "PngImage": {
+        "additionalProperties": false,
+        "properties": {
+          "base64": {
+            "type": "string"
+          },
+          "mimeType": {
+            "$ref": "#/$defs/PngMime"
+          }
+        },
+        "required": [
+          "mimeType",
+          "base64"
+        ],
+        "type": "object"
+      },
+      "PngMime": {
+        "enum": [
+          "image/png"
+        ],
+        "type": "string"
+      },
+      "Point": {
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "y": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "type": "object"
+      },
+      "ProtocolVersion": {
+        "const": 1,
+        "type": "integer"
+      },
+      "Provenance": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bootId": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "fence": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "geometry": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "leaseId": {
+            "type": "string"
+          },
+          "mapping": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bootId",
+          "deviceId",
+          "leaseId",
+          "attachment",
+          "fence",
+          "geometry",
+          "mapping"
+        ],
+        "type": "object"
+      },
+      "Receipt": {
+        "properties": {
+          "actionId": {
+            "type": "string"
+          },
+          "cancelled": {
+            "type": "boolean"
+          },
+          "cleanup": {
+            "$ref": "#/$defs/Cleanup"
+          },
+          "finishedMs": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "inputStatus": {
+            "$ref": "#/$defs/InputStatus"
+          },
+          "observationStatus": {
+            "$ref": "#/$defs/ObservationStatus"
+          },
+          "retryGuidance": {
+            "type": "string"
+          },
+          "seq": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "startedMs": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "transport": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "actionId",
+          "seq",
+          "transport",
+          "startedMs",
+          "finishedMs",
+          "inputStatus",
+          "observationStatus",
+          "cleanup",
+          "cancelled",
+          "retryGuidance"
+        ],
+        "type": "object"
+      },
+      "Rect": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "width": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "x": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "y": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "type": "object"
+      },
+      "ResponseOutcome": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "result": {
+                "$ref": "#/$defs/OperationResult"
+              },
+              "status": {
+                "const": "success",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "result"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "error": {
+                "$ref": "#/$defs/ApiError"
+              },
+              "status": {
+                "const": "error",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "error"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Rotation": {
+        "enum": [
+          "r0",
+          "r90",
+          "r180",
+          "r270"
+        ],
+        "type": "string"
+      },
+      "ScreenshotResult": {
+        "additionalProperties": false,
+        "properties": {
+          "frame": {
+            "$ref": "#/$defs/Frame"
+          },
+          "image": {
+            "$ref": "#/$defs/PngImage"
+          },
+          "settled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "frame",
+          "image"
+        ],
+        "type": "object"
+      },
+      "Size": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "width": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ],
+        "type": "object"
+      },
+      "Stage": {
+        "oneOf": [
+          {
+            "properties": {
+              "detail": {
+                "type": "boolean"
+              },
+              "state": {
+                "const": "known",
+                "type": "string"
+              }
+            },
+            "required": [
+              "state",
+              "detail"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "state": {
+                "const": "unknown",
+                "type": "string"
+              }
+            },
+            "required": [
+              "state"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "detail": {
+                "type": "string"
+              },
+              "state": {
+                "const": "error",
+                "type": "string"
+              }
+            },
+            "required": [
+              "state",
+              "detail"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "StatusResult": {
+        "additionalProperties": false,
+        "properties": {
+          "backend": {
+            "$ref": "#/$defs/BackendKind"
+          },
+          "capabilities": {
+            "$ref": "#/$defs/DeviceCapabilities"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "softwareVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "softwareVersion",
+          "backend",
+          "ready",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "TextResult": {
+        "additionalProperties": false,
+        "properties": {
+          "frame": {
+            "$ref": "#/$defs/Frame"
+          },
+          "language": {
+            "type": "string"
+          },
+          "words": {
+            "items": {
+              "$ref": "#/$defs/OcrWord"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "frame",
+          "language",
+          "words"
+        ],
+        "type": "object"
+      },
+      "UiElement": {
+        "additionalProperties": false,
+        "properties": {
+          "focused": {
+            "type": "boolean"
+          },
+          "identifier": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "rect": {
+            "$ref": "#/$defs/Rect"
+          },
+          "text": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "text",
+          "label",
+          "identifier",
+          "rect",
+          "focused"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "Contains private image/OCR data or a lease grant. Intentionally not Debug.\n```compile_fail\nfn require_debug<T: std::fmt::Debug>() {}\nrequire_debug::<cordgeist::api::Response>();\n```",
+    "properties": {
+      "bootId": {
+        "type": "string"
+      },
+      "outcome": {
+        "$ref": "#/$defs/ResponseOutcome"
+      },
+      "requestId": {
+        "type": "string"
+      },
+      "version": {
+        "$ref": "#/$defs/ProtocolVersion"
+      }
+    },
+    "required": [
+      "version",
+      "requestId",
+      "bootId",
+      "outcome"
+    ],
+    "title": "Response",
+    "type": "object"
+  },
+  "results": {
+    "$defs": {
+      "ActionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "observation": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ScreenshotResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only for receipt.observationStatus=captured. No local-only path."
+          },
+          "receipt": {
+            "$ref": "#/$defs/Receipt"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "ActionStatusResult": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "actionId": {
+                "type": "string"
+              },
+              "phase": {
+                "const": "queued",
+                "type": "string"
+              },
+              "seq": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "phase",
+              "actionId",
+              "seq"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "actionId": {
+                "type": "string"
+              },
+              "phase": {
+                "const": "executing",
+                "type": "string"
+              },
+              "seq": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "phase",
+              "actionId",
+              "seq"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "$ref": "#/$defs/ActionResult"
+              },
+              "phase": {
+                "const": "final",
+                "type": "string"
+              }
+            },
+            "required": [
+              "phase",
+              "action"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "AppsResult": {
+        "additionalProperties": false,
+        "properties": {
+          "apps": {
+            "items": {
+              "$ref": "#/$defs/InstalledApp"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "apps"
+        ],
+        "type": "object"
+      },
+      "BackendKind": {
+        "enum": [
+          "unavailable",
+          "aoa-hid",
+          "fake-software-only"
+        ],
+        "type": "string"
+      },
+      "CalibrationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "$ref": "#/$defs/Size"
+          },
+          "maximumX": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maximumY": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "recovery": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "display",
+          "maximumX",
+          "maximumY",
+          "verified",
+          "recovery"
+        ],
+        "type": "object"
+      },
+      "CancelResult": {
+        "additionalProperties": false,
+        "properties": {
+          "actionId": {
+            "type": "string"
+          },
+          "cleanup": {
+            "$ref": "#/$defs/Cleanup"
+          },
+          "seq": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/$defs/CancellationState"
+          }
+        },
+        "required": [
+          "actionId",
+          "seq",
+          "state",
+          "cleanup"
+        ],
+        "type": "object"
+      },
+      "CancellationState": {
+        "enum": [
+          "requested",
+          "cancelled",
+          "already-final"
+        ],
+        "type": "string"
+      },
+      "Capability": {
+        "properties": {
+          "evidence": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "profile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "Cleanup": {
+        "enum": [
+          "neutral",
+          "pending",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "CoordinateSpace": {
+        "enum": [
+          "returned-image-pixels",
+          "screen-pixels"
+        ],
+        "type": "string"
+      },
+      "DeviceCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "aoaTouch": {
+            "$ref": "#/$defs/Capability"
+          },
+          "keyboard": {
+            "$ref": "#/$defs/Capability"
+          },
+          "keyboardLayout": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mediaScan": {
+            "$ref": "#/$defs/Capability"
+          },
+          "ocr": {
+            "$ref": "#/$defs/Capability"
+          },
+          "ocrLanguages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "screenshot": {
+            "$ref": "#/$defs/Capability"
+          },
+          "supportedKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "screenshot",
+          "aoaTouch",
+          "keyboard",
+          "supportedKeys",
+          "ocr",
+          "ocrLanguages",
+          "mediaScan"
+        ],
+        "type": "object"
+      },
+      "DeviceHealth": {
+        "enum": [
+          "discovered",
+          "identity-matched",
+          "initializing",
+          "ready",
+          "leased",
+          "degraded",
+          "quarantined",
+          "disconnected"
+        ],
+        "type": "string"
+      },
+      "DeviceSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "capabilities": {
+            "$ref": "#/$defs/DeviceCapabilities"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "health": {
+            "$ref": "#/$defs/DeviceHealth"
+          },
+          "ownerLabel": {
+            "description": "Informational label only, never an owner credential.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reasonCodes": {
+            "items": {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "deviceId",
+          "attachment",
+          "health",
+          "reasonCodes",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "DevicesResult": {
+        "additionalProperties": false,
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/$defs/DeviceSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "devices"
+        ],
+        "type": "object"
+      },
+      "DiagnosticResult": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "recovery": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "evidence",
+          "recovery"
+        ],
+        "type": "object"
+      },
+      "DoctorResult": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "$ref": "#/$defs/DeviceCapabilities"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/$defs/DiagnosticResult"
+            },
+            "type": "array"
+          },
+          "deviceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "checks",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "ElementsResult": {
+        "additionalProperties": false,
+        "properties": {
+          "elements": {
+            "items": {
+              "$ref": "#/$defs/UiElement"
+            },
+            "type": "array"
+          },
+          "frame": {
+            "$ref": "#/$defs/Frame"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "frame",
+          "elements",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "enum": [
+          "protocol-version-unsupported",
+          "backend-unavailable",
+          "device-identity-ambiguous",
+          "lease-invalid",
+          "lease-expired",
+          "leased",
+          "geometry-changed",
+          "frame-expired",
+          "invalid-request",
+          "mapping-unverified",
+          "unsupported-character",
+          "unsupported-key",
+          "receipt-expired",
+          "sequence-mismatch",
+          "queue-full",
+          "native-cleanup-pending",
+          "input-outcome-unknown",
+          "capture-unavailable",
+          "metadata-unsupported",
+          "ocr-unavailable",
+          "ocr-ambiguous",
+          "media-partial-result",
+          "process-timeout",
+          "process-cancelled",
+          "output-limit",
+          "process-failed",
+          "adb-unauthorized",
+          "device-disconnected"
+        ],
+        "type": "string"
+      },
+      "Evidence": {
+        "enum": [
+          "unavailable",
+          "detected",
+          "verified"
+        ],
+        "type": "string"
+      },
+      "Frame": {
+        "additionalProperties": false,
+        "properties": {
+          "capturedMs": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "coordinateSpace": {
+            "$ref": "#/$defs/CoordinateSpace"
+          },
+          "display": {
+            "$ref": "#/$defs/Size"
+          },
+          "displayId": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "image": {
+            "$ref": "#/$defs/Size"
+          },
+          "provenance": {
+            "$ref": "#/$defs/Provenance"
+          },
+          "rotation": {
+            "$ref": "#/$defs/Rotation"
+          }
+        },
+        "required": [
+          "id",
+          "provenance",
+          "capturedMs",
+          "image",
+          "display",
+          "rotation",
+          "displayId",
+          "coordinateSpace"
+        ],
+        "type": "object"
+      },
+      "InputStatus": {
+        "enum": [
+          "not-sent",
+          "sent",
+          "partial",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "InstalledApp": {
+        "additionalProperties": false,
+        "properties": {
+          "appName": {
+            "type": "string"
+          },
+          "packageName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "packageName",
+          "appName"
+        ],
+        "type": "object"
+      },
+      "LeaseAuth": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bootId": {
+            "type": "string"
+          },
+          "credential": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "fence": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "leaseId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bootId",
+          "deviceId",
+          "leaseId",
+          "credential",
+          "attachment",
+          "fence"
+        ],
+        "type": "object"
+      },
+      "LeaseEndResult": {
+        "additionalProperties": false,
+        "properties": {
+          "cleanup": {
+            "$ref": "#/$defs/Cleanup"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "fence": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "leaseId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "deviceId",
+          "fence",
+          "cleanup"
+        ],
+        "type": "object"
+      },
+      "LeaseGrant": {
+        "additionalProperties": false,
+        "properties": {
+          "auth": {
+            "$ref": "#/$defs/LeaseAuth"
+          },
+          "idleDeadlineMs": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "nextSeq": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "auth",
+          "idleDeadlineMs",
+          "nextSeq"
+        ],
+        "type": "object"
+      },
+      "MediaPushResult": {
+        "additionalProperties": false,
+        "properties": {
+          "media": {
+            "$ref": "#/$defs/MediaResult"
+          },
+          "receipt": {
+            "$ref": "#/$defs/Receipt"
+          }
+        },
+        "required": [
+          "receipt",
+          "media"
+        ],
+        "type": "object"
+      },
+      "MediaResult": {
+        "properties": {
+          "bytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "copied": {
+            "$ref": "#/$defs/Stage"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "indexed": {
+            "$ref": "#/$defs/Stage"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "pickerVerified": {
+            "$ref": "#/$defs/Stage"
+          },
+          "uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "copied",
+          "indexed",
+          "pickerVerified",
+          "destination",
+          "bytes",
+          "mime"
+        ],
+        "type": "object"
+      },
+      "ObservationStatus": {
+        "enum": [
+          "not-requested",
+          "captured",
+          "timeout",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "OcrWord": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "format": "float",
+            "type": "number"
+          },
+          "origin": {
+            "$ref": "#/$defs/Point"
+          },
+          "size": {
+            "$ref": "#/$defs/Size"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "confidence",
+          "origin",
+          "size"
+        ],
+        "type": "object"
+      },
+      "PngImage": {
+        "additionalProperties": false,
+        "properties": {
+          "base64": {
+            "type": "string"
+          },
+          "mimeType": {
+            "$ref": "#/$defs/PngMime"
+          }
+        },
+        "required": [
+          "mimeType",
+          "base64"
+        ],
+        "type": "object"
+      },
+      "PngMime": {
+        "enum": [
+          "image/png"
+        ],
+        "type": "string"
+      },
+      "Point": {
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "y": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "type": "object"
+      },
+      "Provenance": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bootId": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "fence": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "geometry": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "leaseId": {
+            "type": "string"
+          },
+          "mapping": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bootId",
+          "deviceId",
+          "leaseId",
+          "attachment",
+          "fence",
+          "geometry",
+          "mapping"
+        ],
+        "type": "object"
+      },
+      "Receipt": {
+        "properties": {
+          "actionId": {
+            "type": "string"
+          },
+          "cancelled": {
+            "type": "boolean"
+          },
+          "cleanup": {
+            "$ref": "#/$defs/Cleanup"
+          },
+          "finishedMs": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "inputStatus": {
+            "$ref": "#/$defs/InputStatus"
+          },
+          "observationStatus": {
+            "$ref": "#/$defs/ObservationStatus"
+          },
+          "retryGuidance": {
+            "type": "string"
+          },
+          "seq": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "startedMs": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "transport": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "actionId",
+          "seq",
+          "transport",
+          "startedMs",
+          "finishedMs",
+          "inputStatus",
+          "observationStatus",
+          "cleanup",
+          "cancelled",
+          "retryGuidance"
+        ],
+        "type": "object"
+      },
+      "Rect": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "width": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "x": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "y": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "type": "object"
+      },
+      "Rotation": {
+        "enum": [
+          "r0",
+          "r90",
+          "r180",
+          "r270"
+        ],
+        "type": "string"
+      },
+      "ScreenshotResult": {
+        "additionalProperties": false,
+        "properties": {
+          "frame": {
+            "$ref": "#/$defs/Frame"
+          },
+          "image": {
+            "$ref": "#/$defs/PngImage"
+          },
+          "settled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "frame",
+          "image"
+        ],
+        "type": "object"
+      },
+      "Size": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "width": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ],
+        "type": "object"
+      },
+      "Stage": {
+        "oneOf": [
+          {
+            "properties": {
+              "detail": {
+                "type": "boolean"
+              },
+              "state": {
+                "const": "known",
+                "type": "string"
+              }
+            },
+            "required": [
+              "state",
+              "detail"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "state": {
+                "const": "unknown",
+                "type": "string"
+              }
+            },
+            "required": [
+              "state"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "detail": {
+                "type": "string"
+              },
+              "state": {
+                "const": "error",
+                "type": "string"
+              }
+            },
+            "required": [
+              "state",
+              "detail"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "StatusResult": {
+        "additionalProperties": false,
+        "properties": {
+          "backend": {
+            "$ref": "#/$defs/BackendKind"
+          },
+          "capabilities": {
+            "$ref": "#/$defs/DeviceCapabilities"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "softwareVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "softwareVersion",
+          "backend",
+          "ready",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "TextResult": {
+        "additionalProperties": false,
+        "properties": {
+          "frame": {
+            "$ref": "#/$defs/Frame"
+          },
+          "language": {
+            "type": "string"
+          },
+          "words": {
+            "items": {
+              "$ref": "#/$defs/OcrWord"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "frame",
+          "language",
+          "words"
+        ],
+        "type": "object"
+      },
+      "UiElement": {
+        "additionalProperties": false,
+        "properties": {
+          "focused": {
+            "type": "boolean"
+          },
+          "identifier": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "rect": {
+            "$ref": "#/$defs/Rect"
+          },
+          "text": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "text",
+          "label",
+          "identifier",
+          "rect",
+          "focused"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "oneOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "observations.elements",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/ElementsResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "apps.list",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/AppsResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "input.android",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/ActionResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "setup.calibrate",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/CalibrationResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "system.status",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/StatusResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "system.doctor",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/DoctorResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "devices.list",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/DevicesResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "leases.acquire",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/LeaseGrant"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "leases.release",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/LeaseEndResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "leases.revoke",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/LeaseEndResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "observations.screenshot",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/ScreenshotResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "input.tap",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/ActionResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "input.swipe",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/ActionResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "input.hold",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/ActionResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "input.type",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/ActionResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "input.key",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/ActionResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "actions.status",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/ActionStatusResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "actions.cancel",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/CancelResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "observations.text",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/TextResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "media.push",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/MediaPushResult"
+          }
+        },
+        "required": [
+          "method",
+          "value"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "OperationResult"
+  },
+  "transform": {
+    "$defs": {
+      "Rotation": {
+        "enum": [
+          "r0",
+          "r90",
+          "r180",
+          "r270"
+        ],
+        "type": "string"
+      },
+      "Size": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "width": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "Explicit calibrated image-to-HID orientation; never inferred from image aspect.",
+    "properties": {
+      "genericScreen": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Size"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Daemon-owned effective wm size; absent for legacy calibrated profiles."
+      },
+      "maxX": {
+        "format": "uint16",
+        "maximum": 65535,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "maxY": {
+        "format": "uint16",
+        "maximum": 65535,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "rotation": {
+        "$ref": "#/$defs/Rotation"
+      },
+      "verified": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "rotation",
+      "maxX",
+      "maxY",
+      "verified"
+    ],
+    "title": "Transform",
+    "type": "object"
+  }
+}

@@ -1,0 +1,11 @@
+[package]
+name = "aoahid"
+version = "2.0.3"
+edition = "2021"
+description = "Typed ownership and node-reference wrappers for libaoahid"
+license = "MIT"
+homepage = "https://github.com/nemarpuc/libaoahid"
+repository = "https://github.com/nemarpuc/libaoahid"
+
+[dependencies]
+aoahid-sys = { path = "../aoahid-sys", version = "2.0.3" }

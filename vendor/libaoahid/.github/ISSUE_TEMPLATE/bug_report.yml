@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a reproducible library, transport, descriptor, or target issue.
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Do not include HID report payloads that may contain passwords, medical
+        data, or other sensitive input. Attach the exact evidence needed to
+        distinguish host, USB, kernel, Android-classification, and app behavior.
+  - type: input
+    id: revision
+    attributes:
+      label: libaoahid revision
+      description: Commit SHA or release version.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Exact environment
+      description: Host OS/architecture, libusb version/backend, Android build fingerprint, kernel revision, USB mode, and physical topology.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include explicit option values, call order, result codes, and sanitized diagnostics.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence layers
+      description: USB trace, kernel parse/capabilities, dumpsys input, getevent, and application API evidence as applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and observed behavior
+    validations:
+      required: true

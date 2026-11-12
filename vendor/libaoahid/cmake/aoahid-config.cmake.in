@@ -1,0 +1,119 @@
+@PACKAGE_INIT@
+
+set(aoahid_VERSION "@PROJECT_VERSION@")
+set(aoahid_HOMEPAGE_URL "@PROJECT_HOMEPAGE_URL@")
+# Config packages are allowed to reject themselves by setting this variable to
+# FALSE.  Establish the successful baseline explicitly instead of depending on
+# the find_package() implementation's incoming value; component and dependency
+# checks below change it back to FALSE only for a real rejection.
+set(aoahid_FOUND TRUE)
+
+include("${CMAKE_CURRENT_LIST_DIR}/aoahid-check-libusb.cmake")
+
+set(aoahid_shared_FOUND FALSE)
+set(aoahid_static_FOUND FALSE)
+set(_AOAHID_REQUEST_SHARED FALSE)
+set(_AOAHID_REQUEST_STATIC FALSE)
+set(_AOAHID_DEFAULT_STATIC FALSE)
+set(_AOAHID_HAS_SHARED FALSE)
+set(_AOAHID_HAS_STATIC FALSE)
+# A stale or merged installation must not manufacture a component that this
+# package configuration was never built to provide.  Require both the
+# configure-time contract and the corresponding installed export file.
+set(_AOAHID_BUILT_SHARED @AOAHID_BUILD_SHARED@)
+set(_AOAHID_BUILT_STATIC @AOAHID_BUILD_STATIC@)
+if(_AOAHID_BUILT_SHARED AND
+   EXISTS "${CMAKE_CURRENT_LIST_DIR}/aoahid-shared-targets.cmake")
+  set(_AOAHID_HAS_SHARED TRUE)
+endif()
+if(_AOAHID_BUILT_STATIC AND
+   EXISTS "${CMAKE_CURRENT_LIST_DIR}/aoahid-static-targets.cmake")
+  set(_AOAHID_HAS_STATIC TRUE)
+endif()
+
+if(aoahid_FIND_COMPONENTS)
+  foreach(_AOAHID_COMPONENT IN LISTS aoahid_FIND_COMPONENTS)
+    if(_AOAHID_COMPONENT STREQUAL "shared")
+      set(_AOAHID_REQUEST_SHARED TRUE)
+    elseif(_AOAHID_COMPONENT STREQUAL "static")
+      set(_AOAHID_REQUEST_STATIC TRUE)
+    else()
+      set("aoahid_${_AOAHID_COMPONENT}_FOUND" FALSE)
+    endif()
+  endforeach()
+elseif(_AOAHID_HAS_SHARED)
+  set(_AOAHID_REQUEST_SHARED TRUE)
+else()
+  set(_AOAHID_REQUEST_STATIC TRUE)
+  set(_AOAHID_DEFAULT_STATIC TRUE)
+endif()
+
+if(_AOAHID_REQUEST_SHARED AND _AOAHID_HAS_SHARED)
+  include("${CMAKE_CURRENT_LIST_DIR}/aoahid-shared-targets.cmake")
+  set(aoahid_shared_FOUND TRUE)
+endif()
+
+set(_AOAHID_EXPORTED_LIBUSB_TARGET "@AOAHID_USB_LINK_TARGET@")
+set(_AOAHID_STATIC_DEPENDENCY_FOUND TRUE)
+if(_AOAHID_REQUEST_STATIC AND _AOAHID_HAS_STATIC AND
+   NOT _AOAHID_EXPORTED_LIBUSB_TARGET STREQUAL "" AND
+   NOT TARGET "${_AOAHID_EXPORTED_LIBUSB_TARGET}")
+  if(_AOAHID_EXPORTED_LIBUSB_TARGET STREQUAL "PkgConfig::AOAHID_LIBUSB")
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+      pkg_check_modules(AOAHID_LIBUSB QUIET IMPORTED_TARGET "libusb-1.0>=1.0.30")
+    endif()
+  endif()
+
+  if(NOT TARGET "${_AOAHID_EXPORTED_LIBUSB_TARGET}")
+    find_path(AOAHID_CONFIG_LIBUSB_INCLUDE_DIR
+        NAMES libusb.h
+        HINTS "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@"
+        PATH_SUFFIXES libusb-1.0)
+    find_library(AOAHID_CONFIG_LIBUSB_LIBRARY
+        NAMES usb-1.0 libusb-1.0
+        HINTS "@PACKAGE_CMAKE_INSTALL_LIBDIR@")
+    aoahid_check_libusb_api_version(
+        "${AOAHID_CONFIG_LIBUSB_INCLUDE_DIR}/libusb.h"
+        _AOAHID_CONFIG_LIBUSB_VERSION_OK)
+    if(_AOAHID_CONFIG_LIBUSB_VERSION_OK AND AOAHID_CONFIG_LIBUSB_LIBRARY)
+      add_library("${_AOAHID_EXPORTED_LIBUSB_TARGET}" UNKNOWN IMPORTED)
+      set_target_properties("${_AOAHID_EXPORTED_LIBUSB_TARGET}" PROPERTIES
+          IMPORTED_LOCATION "${AOAHID_CONFIG_LIBUSB_LIBRARY}"
+          INTERFACE_INCLUDE_DIRECTORIES "${AOAHID_CONFIG_LIBUSB_INCLUDE_DIR}")
+    endif()
+  endif()
+
+  if(NOT TARGET "${_AOAHID_EXPORTED_LIBUSB_TARGET}")
+    set(_AOAHID_STATIC_DEPENDENCY_FOUND FALSE)
+    set(aoahid_NOT_FOUND_MESSAGE
+        "libaoahid static linkage requires libusb 1.0.30 or newer headers and library.")
+  endif()
+endif()
+
+if(_AOAHID_REQUEST_STATIC AND _AOAHID_HAS_STATIC AND
+   _AOAHID_STATIC_DEPENDENCY_FOUND)
+  include("${CMAKE_CURRENT_LIST_DIR}/aoahid-static-targets.cmake")
+  set(aoahid_static_FOUND TRUE)
+  if(NOT TARGET aoahid::aoahid AND TARGET aoahid::aoahid_static)
+    add_library(aoahid::aoahid ALIAS aoahid::aoahid_static)
+  endif()
+endif()
+
+if(_AOAHID_DEFAULT_STATIC AND NOT aoahid_static_FOUND)
+  set(aoahid_FOUND FALSE)
+endif()
+
+check_required_components(aoahid)
+
+unset(_AOAHID_COMPONENT)
+unset(_AOAHID_REQUEST_SHARED)
+unset(_AOAHID_REQUEST_STATIC)
+unset(_AOAHID_DEFAULT_STATIC)
+unset(_AOAHID_HAS_SHARED)
+unset(_AOAHID_HAS_STATIC)
+unset(_AOAHID_BUILT_SHARED)
+unset(_AOAHID_BUILT_STATIC)
+unset(_AOAHID_EXPORTED_LIBUSB_TARGET)
+unset(_AOAHID_STATIC_DEPENDENCY_FOUND)
+unset(_AOAHID_CONFIG_LIBUSB_VERSION_OK)

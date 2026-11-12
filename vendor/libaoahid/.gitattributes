@@ -1,0 +1,8 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.dll binary
+*.lib binary
+*.so binary
+*.a binary
+*.zip binary
+*.gz binary

@@ -1,0 +1,13 @@
+prefix=@AOAHID_PC_PREFIX@
+exec_prefix=${prefix}
+libdir=@AOAHID_PC_LIBDIR@
+includedir=@AOAHID_PC_INCLUDEDIR@
+
+Name: @AOAHID_PC_NAME@
+Description: Host-side Android Open Accessory 2.0 HID input library
+Version: @PROJECT_VERSION@
+URL: @PROJECT_HOMEPAGE_URL@
+@AOAHID_PC_REQUIRES_PRIVATE@
+Libs: -L${libdir} -l@AOAHID_PC_LIBRARY_NAME@
+@AOAHID_PC_LIBS_PRIVATE@
+Cflags: -I${includedir}

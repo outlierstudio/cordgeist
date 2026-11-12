@@ -1,0 +1,55 @@
+{
+  "version": 2,
+  "cmakeMinimumRequired": { "major": 3, "minor": 20, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Developer build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "AOAHID_BUILD_TESTS": "ON",
+        "AOAHID_USE_FAKE_LIBUSB": "ON",
+        "AOAHID_CHECK_SERIALIZATION": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "AOAHID_BUILD_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "tsan",
+      "displayName": "ThreadSanitizer race-detection build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/tsan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "AOAHID_BUILD_TESTS": "ON",
+        "AOAHID_BUILD_EXAMPLES": "ON",
+        "AOAHID_USE_FAKE_LIBUSB": "ON",
+        "AOAHID_TSAN": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev" },
+    { "name": "release", "configurePreset": "release" },
+    { "name": "tsan", "configurePreset": "tsan" }
+  ],
+  "testPresets": [
+    { "name": "dev", "configurePreset": "dev", "output": { "outputOnFailure": true } },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "output": { "outputOnFailure": true },
+      "environment": { "TSAN_OPTIONS": "halt_on_error=1" }
+    }
+  ]
+}

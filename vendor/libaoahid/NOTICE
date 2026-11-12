@@ -1,0 +1,47 @@
+libaoahid
+Copyright (c) 2026 libaoahid contributors
+
+Summary: libaoahid is MIT. Its only dependency, libusb 1.0, is LGPL-2.1-or-later
+and is always linked dynamically, so redistributing an unmodified release
+archive satisfies both licenses. Details follow.
+
+This distribution includes software developed by the libaoahid contributors
+and is licensed under the MIT License. The complete license text is in LICENSE.
+
+libaoahid uses libusb 1.0, which is a separate work distributed under the GNU
+Lesser General Public License, version 2.1 or (at your option) any later version.
+Windows packages include the dynamically linked libusb runtime and import
+library, and macOS packages include `libusb-1.0.0.dylib`; the corresponding
+libusb license and copyright file is included.
+Static libaoahid archives do not incorporate libusb object code, but programs
+linking those archives must provide a compatible libusb implementation.
+
+The exact dependency version is recorded in each package's build metadata and
+SPDX document. Every binary archive also carries the official libusb 1.0.30
+source tarball and its verified SHA-256 under
+share/doc/libaoahid/third-party/source/. Windows archives additionally carry
+the exact pinned vcpkg libusb `vcpkg.json` and `portfile.cmake` files used by
+the build. Those vcpkg-authored files are covered by Microsoft's MIT License;
+the exact pinned `LICENSE.txt` is included as
+share/doc/libaoahid/third-party/vcpkg-LICENSE.txt. The copied third-party
+notices are authoritative for the packaged dependency and build-material
+revisions.
+
+Every asset that ships the libusb runtime carries this NOTICE, LICENSE,
+THIRD_PARTY_NOTICES.md, libusb's LGPL-2.1 text, and libusb's corresponding
+source archive in the same distribution unit. That includes the smaller
+`*-runtime` bundles as well as the complete `*-shared` and `*-static`
+archives. No bare shared object or DLL is published as a standalone release
+asset, so no distributed unit containing the libusb runtime can become
+separated from libusb's license and corresponding source.
+
+Every first-party source file in this repository carries an
+SPDX-License-Identifier: MIT tag and copyright line of its own, so a file
+copied out of the repository remains identifiable without the root LICENSE.
+The SPDX document in each release records the license of each packaged file
+individually: MIT for first-party output, LGPL-2.1-or-later for every file
+installed from libusb, and MIT for the pinned vcpkg material.
+
+libusb project, source, and license: https://github.com/libusb/libusb
+
+SPDX-License-Identifier: MIT

@@ -1,0 +1,22 @@
+name: software
+on: [push, pull_request]
+jobs:
+  software:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt, clippy
+      - run: ./scripts/check.sh
+  native:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - run: pacman -Syu --noconfirm git cmake ninja libusb python rustup
+      - uses: actions/checkout@v4
+      - name: Trust the checked-out workspace in the container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: rustup toolchain install 1.97.1 --profile minimal
+      - run: ./scripts/build-native.sh
+      - run: ./scripts/check-native.sh

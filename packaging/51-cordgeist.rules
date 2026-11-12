@@ -1,0 +1,4 @@
+# Explicit user installation only. Tested Samsung Note 9 USB device modes.
+SUBSYSTEM=="usb", ATTR{idVendor}=="04e8", ATTR{idProduct}=="6860", MODE="0660", TAG+="uaccess"
+# AOA accessory modes, independent of phone manufacturer.
+SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", ATTR{idProduct}=="2d0[0-5]", MODE="0660", TAG+="uaccess"

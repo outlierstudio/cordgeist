@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Cordgeist synthetic test area</title>
+<style>
+html,body { margin:0; background:#101820; color:white; font:18px sans-serif; }
+header { position:fixed; top:0; left:0; right:0; padding:12px; background:#101820; z-index:2; }
+#arena { position:relative; height:100vh; touch-action:pan-y; }
+#target { position:absolute; width:48px; height:48px; margin:-24px; border:0; border-radius:0; appearance:none; box-shadow:none; padding:0; background:rgb(211,0,211); touch-action:none; }
+#receipt { position:fixed; left:12px; bottom:12px; padding:8px; background:#101820; z-index:2; }
+section { padding:24px; min-height:100vh; border-top:12px solid #2695ab; }
+input { width:90%; font:24px monospace; padding:10px; }
+button { font:18px sans-serif; padding:12px; }
+</style>
+<header>Cordgeist · synthetic test content<br><span id="instruction">Calibration target 1 of 3</span></header>
+<div id="arena"><button id="target" aria-label="Synthetic calibration target"></button></div>
+<div id="receipt" role="status">No touch observed</div>
+<section><h1>Swipe destination: panel TWO</h1><p>This panel contains no account or personal data.</p><label>ASCII test field <input id="ascii" autocomplete="off" spellcheck="false" placeholder="Synthetic ASCII only"></label><p id="typed">No text observed</p><button id="reset">Reset calibration</button></section>
+<section><h1>Swipe destination: panel THREE</h1><p>Visible scroll evidence.</p></section>
+<script>
+'use strict';
+const target=document.querySelector('#target'), arena=document.querySelector('#arena');
+const receipt=document.querySelector('#receipt'), instruction=document.querySelector('#instruction');
+const positions=[[.5,.5],[.1,.15],[.9,.85]];
+let stage=0, down=null, timer=null;
+function place(){const p=positions[Math.min(stage,2)];target.style.left=(p[0]*100)+'%';target.style.top=(p[1]*100)+'%';}
+function reset(){stage=0;down=null;target.style.background='rgb(211,0,211)';instruction.textContent='Calibration target 1 of 3';receipt.textContent='No touch observed';place();}
+target.addEventListener('pointerdown',event=>{
+ target.setPointerCapture(event.pointerId);down={time:performance.now(),x:event.clientX,y:event.clientY};
+ timer=setTimeout(()=>{receipt.textContent='HOLD observed on synthetic target';target.style.background='rgb(0,211,0)';},600);
+});
+target.addEventListener('pointerup',event=>{
+ clearTimeout(timer);if(!down)return;
+ const elapsed=Math.round(performance.now()-down.time);down=null;
+ if(elapsed>=600){receipt.textContent='HOLD completed '+elapsed+' ms';return;}
+ stage++;receipt.textContent='Target '+stage+' hit; release observed';
+ if(stage<3){instruction.textContent='Calibration target '+(stage+1)+' of 3';place();}
+ else{target.style.background='rgb(0,211,0)';instruction.textContent='Three targets hit. Hold green target, then swipe to panel TWO.';}
+});
+target.addEventListener('pointercancel',()=>{clearTimeout(timer);down=null;receipt.textContent='Pointer cancelled; reset before calibration';});
+arena.addEventListener('pointerdown',event=>{if(event.target!==target)receipt.textContent='MISS on synthetic background';});
+document.querySelector('#ascii').addEventListener('input',event=>{document.querySelector('#typed').textContent='ASCII field contains '+event.target.value.length+' characters';});
+document.querySelector('#reset').addEventListener('click',()=>{reset();window.scrollTo(0,0);});
+reset();
+</script>
+</html>

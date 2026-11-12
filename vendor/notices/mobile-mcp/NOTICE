@@ -1,0 +1,8 @@
+Cordgeist uses independently written Rust adaptations of mobile-mcp ideas.
+Upstream: https://github.com/mobile-next/mobile-mcp
+Inspected commit: 3b51952bcd83955f3a743f731f5a9beaebecdab7
+License: Apache-2.0 (supplied LICENSE).
+Reference files: src/android.ts; src/coordinate-mapping.ts; src/server.ts.
+Changes: bounded Rust XML parsing/collection, explicit coordinate-space and
+provenance checks, private daemon authority, cancellation and cleanup.
+No TypeScript source is included or executed. No upstream NOTICE file was found.

@@ -1,0 +1,10 @@
+[package]
+name = "aoahid-sys"
+version = "2.0.3"
+edition = "2021"
+description = "Literal Rust FFI declarations for the libaoahid C ABI"
+license = "MIT"
+homepage = "https://github.com/nemarpuc/libaoahid"
+repository = "https://github.com/nemarpuc/libaoahid"
+links = "aoahid"
+build = "build.rs"

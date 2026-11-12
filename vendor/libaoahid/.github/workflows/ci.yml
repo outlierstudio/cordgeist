@@ -1,0 +1,649 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86-64
+            os: ubuntu-22.04
+            platform: linux
+            generator: Ninja
+            binary: build/ci/libaoahid.so
+          - name: Linux AArch64
+            os: ubuntu-22.04-arm
+            platform: linux
+            generator: Ninja
+            binary: build/ci/libaoahid.so
+          - name: macOS ARM64
+            os: macos-15
+            platform: macos
+            generator: Ninja
+            binary: build/ci/libaoahid.dylib
+          - name: macOS x86-64
+            os: macos-15-intel
+            platform: macos
+            generator: Ninja
+            binary: build/ci/libaoahid.dylib
+          - name: Windows x64
+            os: windows-2025-vs2026
+            platform: windows
+            generator: Visual Studio 18 2026
+            cmake_arch: x64
+            binary: build/ci/Release/aoahid.dll
+          - name: Windows ARM64
+            os: windows-11-vs2026-arm
+            platform: windows
+            generator: Visual Studio 18 2026
+            cmake_arch: ARM64
+            binary: build/ci/Release/aoahid.dll
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+
+      - name: Validate public API policy
+        run: python tools/symbol-lint/symbol_lint.py --header include/aoahid.h
+
+      - name: Configure (Unix)
+        if: matrix.platform != 'windows'
+        run: >-
+          cmake -S . -B build/ci -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DAOAHID_USE_FAKE_LIBUSB=ON
+          -DAOAHID_BUILD_SHARED=ON
+          -DAOAHID_BUILD_STATIC=ON
+          -DAOAHID_BUILD_TESTS=ON
+          -DAOAHID_BUILD_EXAMPLES=ON
+          -DCMAKE_INSTALL_LIBDIR=lib
+
+      - name: Configure (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          cmake -S . -B build/ci -G "${{ matrix.generator }}" -A "${{ matrix.cmake_arch }}" `
+            -DAOAHID_USE_FAKE_LIBUSB=ON `
+            -DAOAHID_BUILD_SHARED=ON `
+            -DAOAHID_BUILD_STATIC=ON `
+            -DAOAHID_BUILD_TESTS=ON `
+            -DAOAHID_BUILD_EXAMPLES=ON `
+            -DCMAKE_INSTALL_LIBDIR=lib
+          if ($LASTEXITCODE -ne 0) { throw "native configure failed" }
+
+      - name: Build and test (Unix)
+        if: matrix.platform != 'windows'
+        run: |
+          cmake --build build/ci --config Release --parallel
+          ctest --test-dir build/ci -C Release --output-on-failure
+
+      - name: Build and test (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          cmake --build build/ci --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw "native build failed" }
+          ctest --test-dir build/ci -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) {
+            $lastTestLog = "build/ci/Testing/Temporary/LastTest.log"
+            if (Test-Path $lastTestLog) { Get-Content $lastTestLog }
+            throw "native tests failed; see the complete LastTest.log above"
+          }
+
+      - name: Reject DLL export directives in the static archive
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $directives = & llvm-readobj --coff-directives build/ci/Release/aoahid_static.lib
+          if ($LASTEXITCODE -ne 0) { throw "static archive directive inspection failed" }
+          if ($directives -match '(?i)/EXPORT:aoahid_') {
+            throw "static archive contains DLL export directives"
+          }
+
+      - name: Check dynamic exports and zero-options behavior
+        run: python tools/symbol-lint/symbol_lint.py --header include/aoahid.h --binary "${{ matrix.binary }}"
+
+      - name: Install
+        run: cmake --install build/ci --config Release --prefix build/stage
+
+      - name: Validate combined pkg-config variants (Linux)
+        if: matrix.platform == 'linux'
+        env:
+          PYTHONPATH: tools/release
+        run: |
+          test -f build/stage/lib/libaoahid.so
+          test -f build/stage/lib/libaoahid_static.a
+          python - <<'PY'
+          from pathlib import Path
+          import pkg_config_metadata
+          import validate_release
+
+          pc = Path("build/stage/lib/pkgconfig")
+          project_version = validate_release.source_versions(Path("."))["CMakeLists.txt"]
+          pkg_config_metadata.validate_relocatable(
+              (pc / "aoahid.pc").read_bytes(),
+              label="combined aoahid.pc",
+              expected_name="libaoahid",
+              expected_version=project_version,
+              expected_url="https://github.com/nemarpuc/libaoahid",
+              expected_library="aoahid",
+              expected_private_libraries=None,
+          )
+          pkg_config_metadata.validate_relocatable(
+              (pc / "aoahid-static.pc").read_bytes(),
+              label="combined aoahid-static.pc",
+              expected_name="libaoahid static",
+              expected_version=project_version,
+              expected_url="https://github.com/nemarpuc/libaoahid",
+              expected_library="aoahid_static",
+              expected_requires_private=None,
+              expected_private_libraries=("-lstdc++", "-lc++"),
+          )
+          PY
+
+      - name: Configure installed-package consumer
+        run: cmake -S tools/release/consumer -B build/consumer -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build/stage
+
+      - name: Build installed-package consumer
+        run: cmake --build build/consumer --config Release --parallel
+
+      - name: Configure installed fake-static consumer
+        run: >-
+          cmake -S tools/release/consumer -B build/consumer-fake-static
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build/stage
+          -DAOAHID_FIND_COMPONENTS=static
+          -DAOAHID_CONSUMER_TARGET=aoahid::aoahid_static
+
+      - name: Build installed fake-static consumer
+        run: cmake --build build/consumer-fake-static --config Release --parallel
+
+      - name: Configure installed shared-and-static component consumer
+        run: >-
+          cmake -S tools/release/consumer -B build/consumer-both
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build/stage
+          -DAOAHID_FIND_COMPONENTS="shared;static"
+          -DAOAHID_CONSUMER_TARGET=aoahid::aoahid_static
+
+      - name: Build installed shared-and-static component consumer
+        run: cmake --build build/consumer-both --config Release --parallel
+
+      - name: Run installed-package consumer (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          LD_LIBRARY_PATH="${{ github.workspace }}/build/stage/lib" ./build/consumer/aoahid_consumer
+          ./build/consumer-fake-static/aoahid_consumer
+          ./build/consumer-both/aoahid_consumer
+
+      - name: Run installed-package consumer (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          DYLD_LIBRARY_PATH="${{ github.workspace }}/build/stage/lib" ./build/consumer/aoahid_consumer
+          ./build/consumer-fake-static/aoahid_consumer
+          ./build/consumer-both/aoahid_consumer
+
+      - name: Run installed-package consumer (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $env:PATH = "${{ github.workspace }}\build\stage\bin;$env:PATH"
+          & build/consumer/Release/aoahid_consumer.exe
+          if ($LASTEXITCODE -ne 0) { throw "installed shared consumer failed" }
+          & build/consumer-fake-static/Release/aoahid_consumer.exe
+          if ($LASTEXITCODE -ne 0) { throw "installed fake-static consumer failed" }
+          & build/consumer-both/Release/aoahid_consumer.exe
+          if ($LASTEXITCODE -ne 0) { throw "installed combined-component consumer failed" }
+          $exports = & llvm-readobj --coff-exports build/consumer-fake-static/Release/aoahid_consumer.exe
+          if ($LASTEXITCODE -ne 0) { throw "static consumer export inspection failed" }
+          if ($exports -match '(?m)^\s*Name:\s*aoahid_') {
+            throw "static consumer executable exports libaoahid C ABI symbols"
+          }
+
+  musl:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux musl x86-64
+            os: ubuntu-22.04
+          - name: Linux musl AArch64
+            os: ubuntu-22.04-arm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and test against real musl libc
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Docker Official Image alpine:3.22.5 multi-platform manifest,
+          # recorded by docker-library/repo-info revision
+          # f0a59cf38d485bddce545ac0360a9116a02cadc3.
+          image='alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce'
+          docker pull "$image"
+          docker run --rm \
+            --volume "$PWD:/src" \
+            --workdir /src \
+            "$image" \
+            sh -euc '
+              apk add --no-cache build-base cmake python3
+              cmake -S . -B build/musl -G "Unix Makefiles" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DAOAHID_USE_FAKE_LIBUSB=ON \
+                -DAOAHID_BUILD_SHARED=ON \
+                -DAOAHID_BUILD_STATIC=ON \
+                -DAOAHID_BUILD_TESTS=ON \
+                -DAOAHID_BUILD_EXAMPLES=ON \
+                -DCMAKE_INSTALL_LIBDIR=lib
+              cmake --build build/musl --parallel
+              ctest --test-dir build/musl --output-on-failure
+              cmake --install build/musl --prefix build/musl-stage
+              cmake -S tools/release/consumer -B build/musl-consumer \
+                -DCMAKE_PREFIX_PATH=/src/build/musl-stage
+              cmake --build build/musl-consumer --parallel
+              LD_LIBRARY_PATH=/src/build/musl-stage/lib \
+                ./build/musl-consumer/aoahid_consumer
+              ldd build/musl/libaoahid.so | grep -E "musl|ld-musl"
+            '
+
+  quality:
+    name: Formatting, documentation, and clang-tidy
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+
+      - name: Check formatting
+        run: git ls-files -z -- '*.c' '*.cpp' '*.h' '*.hpp' | xargs -0 --no-run-if-empty clang-format-14 --dry-run --Werror
+
+      - name: Check preserved inputs, release metadata, and Python ABI layouts
+        run: |
+          set -euo pipefail
+          sudo apt-get install --no-install-recommends -y clang-14
+          export CLANG=clang-14
+          python tools/check_input_provenance.py
+          python tools/check_public_contracts.py
+          python tools/check_license_headers.py
+          python tools/bindings/generate.py --check
+          python tests/release/test_release_tools.py
+          PYTHONPATH=bindings/python python bindings/python/tests/test_contract.py
+
+      - name: Build API documentation for the exact source revision
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y doxygen graphviz
+          mkdir -p build/doxygen
+          doxygen tools/docs/Doxyfile
+          test -s build/doxygen/html/index.html
+
+      - name: Build and test with Clang
+        run: |
+          cmake -S . -B build/tidy -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=clang++-14 \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DAOAHID_USE_FAKE_LIBUSB=ON \
+            -DAOAHID_CHECK_SERIALIZATION=ON \
+            -DAOAHID_BUILD_TESTS=ON \
+            -DAOAHID_BUILD_EXAMPLES=ON
+          cmake --build build/tidy --parallel
+          ctest --test-dir build/tidy --output-on-failure
+
+      - name: Run broad clang-tidy checks on production sources
+        run: >-
+          find src -type f -name '*.cpp' -print0
+          | sort -z
+          | xargs -0 --no-run-if-empty -n 1
+          clang-tidy-14 -p build/tidy '--warnings-as-errors=*'
+
+  bindings:
+    name: Python, C#, and Rust ABI oracles (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86-64
+            os: ubuntu-22.04
+          - arch: AArch64
+            os: ubuntu-22.04-arm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+
+      - name: Select .NET 8 SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build the native C ABI oracle and test library
+        run: |
+          cmake -S . -B build/bindings -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DAOAHID_USE_FAKE_LIBUSB=ON \
+            -DAOAHID_BUILD_SHARED=ON \
+            -DAOAHID_BUILD_STATIC=OFF \
+            -DAOAHID_BUILD_TESTS=ON \
+            -DAOAHID_BUILD_EXAMPLES=OFF
+          cmake --build build/bindings \
+            --target aoahid aoahid_abi_layout_oracle \
+            --parallel
+
+      - name: Check the generated bindings against the header, and the Python layout
+        run: |
+          sudo apt-get install --no-install-recommends -y clang-14
+          export CLANG=clang-14
+          python tools/bindings/generate.py --check
+          PYTHONPATH=bindings/python python bindings/python/tests/test_contract.py
+          PYTHONPATH=bindings/python \
+            AOAHID_ABI_ORACLE="$PWD/build/bindings/aoahid_abi_layout_oracle" \
+            python bindings/python/tests/test_layout.py
+          PYTHONPATH=bindings/python \
+            python examples/python/enumerate.py \
+              "$PWD/build/bindings/libaoahid.so" 10
+
+      - name: Check C# layout against compiled C
+        run: >-
+          dotnet run
+          --project bindings/csharp/AoaHid.Tests/AoaHid.Tests.csproj
+          --configuration Release
+          -- "$PWD/build/bindings/aoahid_abi_layout_oracle"
+
+      - name: Run C# enumeration example against fake transport
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/build/bindings
+        run: |
+          dotnet run \
+            --project examples/csharp/Enumerate.csproj \
+            --configuration Release \
+            -- 10
+
+      - name: Select exact Rust toolchain
+        run: rustup toolchain install 1.89.0 --profile minimal --no-self-update
+
+      - name: Check Rust FFI and safe wrapper against compiled C
+        env:
+          AOAHID_ABI_ORACLE: ${{ github.workspace }}/build/bindings/aoahid_abi_layout_oracle
+          AOAHID_LIB_DIR: ${{ github.workspace }}/build/bindings
+          LD_LIBRARY_PATH: ${{ github.workspace }}/build/bindings
+        run: |
+          cargo +1.89.0 test --manifest-path bindings/rust/Cargo.toml --workspace --all-targets
+          cargo +1.89.0 run --manifest-path bindings/rust/Cargo.toml \
+            --package aoahid-sys --example enumerate -- 10
+
+  device-check-app:
+    name: Android device-check application
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select JDK 17
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Select Gradle 9.5.0
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Build diagnostic APK
+        run: >-
+          gradle --no-daemon
+          -p tools/device-check/app
+          :app:assembleDebug
+
+      - name: Upload diagnostic APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: aoahid-device-check-debug-apk
+          path: tools/device-check/app/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  fuzz-smoke:
+    name: libFuzzer builder/serializer/raw smoke
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure Clang libFuzzer target
+        run: >-
+          cmake -S . -B build/fuzz -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER=clang-14
+          -DCMAKE_CXX_COMPILER=clang++-14
+          -DAOAHID_USE_FAKE_LIBUSB=ON
+          -DAOAHID_BUILD_SHARED=OFF
+          -DAOAHID_BUILD_STATIC=ON
+          -DAOAHID_BUILD_TESTS=OFF
+          -DAOAHID_BUILD_EXAMPLES=OFF
+          -DAOAHID_BUILD_FUZZ=ON
+          -DAOAHID_SANITIZE=ON
+
+      - name: Run bounded fuzz smoke
+        run: |
+          cmake --build build/fuzz --target aoahid_fuzz_descriptor --parallel
+          ./build/fuzz/aoahid_fuzz_descriptor \
+            -runs=10000 \
+            -max_len=4096 \
+            -timeout=5 \
+            -print_final_stats=1
+
+  hid-tools:
+    name: hid-tools descriptor parse
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+
+      - name: Check out pinned official hid-tools parser
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://gitlab.freedesktop.org/libevdev/hid-tools.git build/hid-tools
+          git -C build/hid-tools checkout --detach f4a32530ea548df2ae5efd2ebfd16d4c3e658875
+          test "$(git -C build/hid-tools rev-parse HEAD)" = \
+            f4a32530ea548df2ae5efd2ebfd16d4c3e658875
+          # hidtools.hid at this revision imports only parse beyond the Python
+          # standard library.  Keep the parser gate independent of hid-tools'
+          # unrelated CLI/device dependencies and verify the exact PyPI wheel.
+          printf '%s\n' \
+            'parse==1.20.2 --hash=sha256:967095588cb802add9177d0c0b6133b5ba33b1ea9007ca800e526f42a85af558' \
+            > build/hid-tools-requirements.txt
+          python -m pip install \
+            --disable-pip-version-check \
+            --no-deps \
+            --require-hashes \
+            --requirement build/hid-tools-requirements.txt
+
+      - name: Build representative generated descriptors
+        run: |
+          cmake -S . -B build/hid-parse -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DAOAHID_USE_FAKE_LIBUSB=ON \
+            -DAOAHID_BUILD_SHARED=OFF \
+            -DAOAHID_BUILD_STATIC=ON \
+            -DAOAHID_BUILD_TESTS=ON \
+            -DAOAHID_BUILD_EXAMPLES=OFF
+          cmake --build build/hid-parse --target aoahid_export_descriptors --parallel
+          ./build/hid-parse/aoahid_export_descriptors build/hid-descriptors
+          generated_count="$(find build/hid-descriptors -maxdepth 1 -type f -name '*.bin' | wc -l)"
+          golden_count="$(find tests/golden -maxdepth 1 -type f -name '*.hex' | wc -l)"
+          test "$generated_count" -eq "$golden_count"
+
+      - name: Parse every descriptor with the pinned hid-tools parser
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r descriptor; do
+            PYTHONPATH="$PWD/build/hid-tools" python - "$descriptor" \
+              > "${descriptor%.bin}.hid.txt" <<'PY'
+          from pathlib import Path
+          import sys
+
+          from hidtools.hid import ReportDescriptor
+
+          encoded = Path(sys.argv[1]).read_bytes()
+          parsed = ReportDescriptor.from_bytes(encoded)
+          if parsed.size != len(encoded):
+              raise RuntimeError("hid-tools did not consume the complete descriptor")
+          parsed.dump()
+          PY
+            test -s "${descriptor%.bin}.hid.txt"
+          done < <(find build/hid-descriptors -maxdepth 1 -type f -name '*.bin' -print | sort)
+
+  sanitizers:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux ASan and UBSan
+            os: ubuntu-22.04
+            build_type: Debug
+            shared: ON
+            static: OFF
+            configure_flags: -DAOAHID_SANITIZE=ON
+            test_regex: .*
+            tsan_options: ''
+          - name: Linux static-only ASan and UBSan
+            os: ubuntu-22.04
+            build_type: Debug
+            shared: OFF
+            static: ON
+            configure_flags: -DAOAHID_SANITIZE=ON
+            test_regex: .*
+            tsan_options: ''
+          - name: macOS ARM64 ASan and UBSan
+            os: macos-15
+            build_type: Debug
+            shared: ON
+            static: OFF
+            configure_flags: -DAOAHID_SANITIZE=ON
+            test_regex: .*
+            tsan_options: ''
+          - name: macOS x86-64 ASan and UBSan
+            os: macos-15-intel
+            build_type: Debug
+            shared: ON
+            static: OFF
+            configure_flags: -DAOAHID_SANITIZE=ON
+            test_regex: .*
+            tsan_options: ''
+          - name: Linux shared ThreadSanitizer
+            os: ubuntu-22.04
+            build_type: RelWithDebInfo
+            shared: ON
+            static: OFF
+            configure_flags: -DAOAHID_TSAN=ON
+            test_regex: .*
+            tsan_options: halt_on_error=1
+          - name: Linux static-only ThreadSanitizer
+            os: ubuntu-22.04
+            build_type: RelWithDebInfo
+            shared: OFF
+            static: ON
+            configure_flags: -DAOAHID_TSAN=ON
+            test_regex: .*
+            tsan_options: halt_on_error=1
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+
+      - name: Select GCC 12 for ThreadSanitizer
+        if: matrix.tsan_options != ''
+        shell: bash
+        run: |
+          printf 'CC=gcc-12\n' >> "$GITHUB_ENV"
+          printf 'CXX=g++-12\n' >> "$GITHUB_ENV"
+
+      - name: Configure
+        shell: bash
+        run: >-
+          cmake -S . -B build/sanitize -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DAOAHID_USE_FAKE_LIBUSB=ON
+          -DAOAHID_BUILD_SHARED=${{ matrix.shared }}
+          -DAOAHID_BUILD_STATIC=${{ matrix.static }}
+          -DAOAHID_BUILD_TESTS=ON
+          -DAOAHID_BUILD_EXAMPLES=ON
+          ${{ matrix.configure_flags }}
+
+      - name: Build and test
+        env:
+          TSAN_OPTIONS: ${{ matrix.tsan_options }}
+        run: |
+          cmake --build build/sanitize --parallel
+          ctest --test-dir build/sanitize --output-on-failure -R '${{ matrix.test_regex }}'

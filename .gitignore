@@ -1,0 +1,11 @@
+/target/
+/build/
+/.tools/
+*.lease
+*.png
+!tests/fixtures/*.png
+
+# Private explicit identity configuration and operation-owned temporary files.
+pairings.json
+.pairings.lock
+.pairings-*.tmp

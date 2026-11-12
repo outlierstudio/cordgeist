@@ -1,0 +1,10 @@
+AOAHID_2.0 {
+  global:
+    aoahid_*;
+    cg_test_discovery_*;
+    cg_test_session_*;
+    cg_test_gesture_*;
+    cg_test_ascii_*;
+  local:
+    *;
+};

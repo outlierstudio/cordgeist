@@ -1,0 +1,5 @@
+# Retain supplied third-party license/attribution bytes verbatim.
+# Only these notice trees may contain their upstream whitespace.
+vendor/notices/gcc-runtime/** -whitespace
+vendor/notices/rust-runtime-1.97.1/** -whitespace
+vendor/notices/libusb/** -whitespace
