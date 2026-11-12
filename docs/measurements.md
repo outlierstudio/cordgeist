@@ -25,3 +25,12 @@ Earlier portable builds were inspected with objdump and exercised in Ubuntu
 22.04 without a phone. Those loader checks do not prove phone compatibility,
 and do not certify a newly built public artifact. Inspect every new executable
 and bundled native library and repeat loader checks for any distributed archive.
+
+## Later owner-reported samples
+
+The owner reports a later real Cursor acceptance run with 11 tool calls,
+zero errors, Bluetooth read without toggling and successful session_finish.
+The earlier 13-call run above is a separate run. The owner also reports one
+short ASCII typing action at 0.219 seconds. Raw timing boundaries and its payload
+are not included here; do not treat it as a benchmark or a latency guarantee.
+Neither result was rerun for this public source snapshot.

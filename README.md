@@ -1,170 +1,190 @@
-# Cordgeist
+<div align="center">
+<h1>Cordgeist</h1>
+<p>Give AI agents real hands on an Android phone over USB.</p>
+<a href="LICENSE"><img src="https://img.shields.io/github/license/outlierstudio/cordgeist" alt="MIT license"></a>
+<a href="https://github.com/outlierstudio/cordgeist"><img src="https://img.shields.io/github/stars/outlierstudio/cordgeist" alt="GitHub stars"></a>
+</div>
 
-Cordgeist is an MIT-licensed Linux CLI, daemon and local stdio MCP server for controlling one Android phone over USB AOA HID.
+**Taps and keystrokes arrive as a physical USB touchscreen and keyboard.** **Cordgeist registers external AOA HID devices, so touch and typing enter Android through its input-device path rather than framework event injection.**
+Navigate apps and Settings without root or an app installed on the phone. HID may help where apps filter injected input; behavior in those apps is not yet verified.
 
-## Why HID
+<!-- demo -->
+Recordings pending; these are example workflows, not completed demo claims.
 
-One daemon registers USB AOA 2 touchscreen and keyboard devices. Touch, swipe,
-hold and ASCII typing use HID. ADB supplies screenshots, UI elements, app launch
-and explicitly labeled BACK/HOME/ENTER keyevents. CLI and official rmcp stdio
-clients share exclusive ownership, frame validation and truthful action receipts.
-App detection behavior and equivalence to a physical finger are unmeasured.
+**"open settings and turn on dark mode"**
+<!-- demo: dark-mode.mp4 -->
 
-## Install a Linux archive
+**"launch 5 apps as fast as you can"**
+<!-- demo: five-apps.mp4 -->
 
-Requirements: Linux x86_64, glibc 2.31 or newer, installed Google platform-tools
-`adb`, and USB permission for one unlocked, debugging-authorized phone. The
-portable archive includes replaceable shared libaoahid and libusb 1.0.30 plus
-licenses, corresponding source and rebuild instructions. It does not bundle ADB.
-Ubuntu 22.04 loader/diagnostic results are recorded separately from phone tests.
+**"type a message in the search bar"**
+<!-- demo: typing.mp4 -->
 
-Given the archive and its checksum in the same directory:
+> [!IMPORTANT]
+> Requires a **Linux x86_64 host** and an unlocked Android phone over USB with USB debugging authorized.
+> Only the **Galaxy Note 9 (Android 10, portrait)** has been tested. Other phones are untested.
 
+After [building](#install), run from the checkout:
 ```sh
-sha256sum -c cordgeist-v0.1.0-linux-x86_64.tar.gz.sha256
-mkdir -p "$HOME/.local/opt"
-tar -xzf cordgeist-v0.1.0-linux-x86_64.tar.gz -C "$HOME/.local/opt"
-APP="$HOME/.local/opt/cordgeist-v0.1.0-linux-x86_64"
-"$APP/cordgeist" --version
+CG="$PWD/target/release/cordgeist"                       # Native executable
+RUNTIME="$HOME/.local/state/cordgeist"                  # Shared CLI/MCP runtime
+install -d -m 700 "$RUNTIME"                            # User-owned runtime directory
+"$CG" --runtime "$RUNTIME" setup                        # Select the single phone; generic mapping
+"$CG" --runtime "$RUNTIME" doctor --json                # Read-only checks; no tap
+"$CG" --runtime "$RUNTIME" list                         # Inspect discovery
+realpath "$CG"                                        # Copy this absolute path into client config
+# Optional: open the owned synthetic page as described in docs/cli.md first.
+# "$CG" --runtime "$RUNTIME" setup calibrate --verify    # Explicit target verification and saved profile
+# "$CG" --runtime "$RUNTIME" daemon stop                # Stop after closing agent sessions
 ```
 
-For upgrades, close older Cordgeist MCP connections and stop their daemon first.
-Do not run multiple native daemons for the same phone.
-
-If doctor reports USB permission errors, review the scoped rule and explicitly
-install it yourself:
-
-```sh
-sudo install -m 644 "$APP/packaging/51-cordgeist.rules" /etc/udev/rules.d/51-cordgeist.rules
-sudo udevadm control --reload-rules
+```mermaid
+flowchart LR
+    Agent <--> MCP["MCP stdio"]
+    MCP <--> Daemon["Cordgeist daemon"]
+    Daemon --> HID["AOA HID over USB"]
+    HID -->|Touch and keys| Phone["Android phone"]
+    Daemon <--> ADB
+    ADB <-->|Launch, screenshots, UI elements, buttons| Phone
 ```
 
-Reconnect the phone and unlock it. No installer runs sudo or changes drivers.
-The normal-mode rule covers the tested Samsung USB ID; other normal USB IDs need
-an explicit local rule. AOA accessory IDs are covered independently of model.
-This permission scope is not a setup model allowlist. See packaging/UDEV.md.
+## Features
 
-## Setup and Cursor
+- **Measured mapping:** maximum Android-mapped error **1.343 px over 9 points** on a Galaxy Note 9; optional calibration, generic mapping by default.
+- **US-ANSI keyboard typing:** ASCII through HID; owner-reported short typing sample **0.219 s**, a single earlier result, not a benchmark.
+- **Touch and swipes:** element-center clicks, coordinate taps, directional swipes and legacy holds.
+- **App control and observation:** common-name/package launch, UI elements and explicit screenshots; actions skip automatic after-images.
+- **Typed receipts:** `sent`, `partial`, `not-sent` or `unknown`; delivery is separate from application success.
+- **Exclusive ownership:** one owner lease per phone, managed inside each MCP session.
+- **Real agent acceptance:** owner-reported Cursor run: **11 tool calls, 0 errors**, Bluetooth read without toggling, then hand-back.
 
-Connect only the owned phone, enable USB debugging and approve the host key.
-Leave a deliberate test screen visible for initial checks.
+These are earlier development results, not fresh hardware acceptance of this source snapshot. See [measurement scope](docs/measurements.md).
 
-```sh
-RUNTIME="$HOME/.local/state/cordgeist"
-install -d -m 700 "$RUNTIME"
-"$APP/cordgeist" doctor --json
-"$APP/cordgeist" --runtime "$RUNTIME" setup
-realpath "$APP/cordgeist"
-```
+## Install
 
-Setup starts the daemon and selects the exact single attached phone. Generic
-mapping uses current effective wm size, display geometry and the registered HID
-descriptor. Calibration is optional. Ordinary doctor is read-only; no tap test.
-Readiness means the native backend can be acquired, including clean hand-back
-that can be rearmed. It does not imply an owned lease, fresh UI frame, calibrated
-accuracy or application success. Capability `detected` is not `verified`.
-
-Use the absolute executable and runtime paths in Cursor's MCP configuration
-(JSON does not expand `$HOME`):
-
-```json
-{
-  "mcpServers": {
-    "cordgeist": {
-      "command": "/absolute/path/to/cordgeist-v0.1.0-linux-x86_64/cordgeist",
-      "args": ["--runtime", "/absolute/path/to/private-runtime", "mcp"]
-    }
-  }
-}
-```
-
-Run setup before connecting Cursor. Disable older Cordgeist entries and open a
-fresh chat. No lease credential or lease file is exposed to the model.
-
-If Cursor reports `backend-unavailable` while the intended daemon is ready,
-inspect the Cordgeist entry in `~/.cursor/mcp.json`. In the measured Cursor CLI
-run, a stale global entry selected an older executable and a missing daemon
-socket despite the prepared workspace entry. Check both the absolute `command`
-and its `--runtime` path, then restart the MCP server. A standalone doctor pass
-does not prove that Cursor selected that same executable or daemon.
-
-A typical workflow:
-
-1. `mobile_launch_app({"appName":"Settings"})` opens Settings directly.
-2. `mobile_list_elements_on_screen` returns untrusted labels and `item.element`.
-3. `mobile_click_on_screen_at_coordinates({"element": item.element})` computes
-   the center on the server. List again to observe the result. Coordinates are
-   fallback only, in SCREEN pixels; legacy tools retain screenshot-pixel contracts.
-4. Use explicit screenshots for empty/visual screens. An unavailable element dump
-   returns an explicit error and fresh screenshot fallback, with bounded work.
-5. Finish with `session_finish`. Idle/session-end expiry are cleanup backstops.
-
-Names resolve through framework roles (Settings, Camera) or a unique installed
-package suffix. Full localized label lookup is not implemented. Unknown or
-ambiguous names require an exact `packageName`; only Settings role launch has
-phone evidence. No manufacturer-specific package table is used.
-
-Actions return receipts without automatic post-action screenshots. `sent` means
-transport delivery; verify application effects with a new observation. After an
-uncertain mutation, resolve its original status; never replay with a fresh identity.
-
-## Measured phone and accuracy
-
-| Phone | Android | Mode | Recorded evidence |
-|---|---|---|---|
-| Samsung Galaxy Note 9 SM-N960F | 10 | USB, portrait, effective 1080×2220 | Nine read-only doctor checks passed; real Cursor owner reports 13 calls, 0 misses and hand-back; recorded nine-point perimeter max Android-mapped error 1.343 px |
-
-The Cursor result above predates the status/name fixes; its wall time was not
-provided. The measurements describe earlier development builds, not hardware acceptance
-of this public source snapshot. Do not infer a numerical speed improvement. Perimeter
-numbers use observed kernel HID events and Android InputReader mapping; the
-independent rendered-marker inset-grid maximum was 0.707 px. These do not establish
-subpixel physical precision. Other phones and landscape accuracy are untested.
-See [measurement scope](docs/measurements.md).
-
-## Limits and privacy
-
-- No Bluetooth HID transport in v1; the input connection is USB.
-- One phone and one owning client at a time; other clients receive a busy/leased result.
-- Portrait is the measured mode. Other rotations warn that taps may be rotated;
-  landscape accuracy is unverified. Unknown geometry and stale authority reject.
-- ASCII US-ANSI typing only. No OCR, streaming, dashboards or media MCP tools.
-- BACK/HOME/ENTER use authorized ADB keyevents and report `via: adb`.
-- UI text is untrusted data. Screenshots and element content requested through MCP
-  reach the selected client/model provider. Editable/password values are withheld
-  from element results, but screenshots can contain sensitive content.
-- Cordgeist does not silently record screenshots. Explicit CLI exports and the
-  opted-in hardware measurement helper have their documented local files/cleanup.
-- Optional calibration targets must be on owned synthetic content. Parser failure
-  warns; failed verification never becomes a pass. Saved profiles stay phone-bound.
-- The udev rule is prepared for explicit installation; it was not installed by
-  the release executor. Loader checks do not prove USB access on another host.
-
-## Development and credits
-
-Use the pinned Rust toolchain and offline dependencies:
+Build from source with Rust **1.97.1**, CMake ≥3.20, a C++20 compiler, Ninja, pkg-config, and matching **libusb headers/runtime ≥1.0.30**. Install Google platform-tools `adb` separately and put it on PATH. Build scripts do not fetch dependencies; Cargo needs its locked crates available.
 
 ```sh
-source scripts/env.sh
-export CARGO_NET_OFFLINE=true
-./scripts/check.sh
+git clone https://github.com/outlierstudio/cordgeist.git
+cd cordgeist
 ./scripts/build-native.sh
-./scripts/check-native.sh
+AOAHID_LIB_DIR="$PWD/build/native-prefix/lib" cargo build --release --locked --features native-aoa
 ```
 
-Native source builds require CMake ≥3.20, C++20, Ninja, pkg-config and matching
-libusb headers/runtime ≥1.0.30. Build scripts do not fetch dependencies. See
-[portable rebuild instructions](packaging/PORTABLE-BUILD.md).
+This build uses the host's libc; it is not a portable binary promise. See [dependencies](docs/dependencies.md) and [portable build requirements](packaging/PORTABLE-BUILD.md).
+For USB permission errors, review and explicitly install the scoped [udev rule](packaging/UDEV.md). Its normal-mode ID covers the tested Samsung; other IDs need a local rule. No silent sudo or driver changes.
 
-Cordgeist is MIT. Credits: pinned libaoahid (MIT), mobile-mcp ideas ported to Rust
-(Apache-2.0), official rmcp (Apache-2.0 with supplied notices), quick-xml (MIT),
-and bundled libusb (LGPL-2.1-or-later). Full terms and source obligations are in
-LICENSE, NOTICE, THIRD_PARTY_NOTICES.md and third-party-notices in the archive.
-No claim is made that apps cannot distinguish HID from a finger.
+## Use it with an agent
 
-App launch accepts `appName` such as `Chrome`, `Settings` or `Camera`; unknown
-or ambiguous names require an exact installed `packageName`. Launch has a
-separate 4-second budget, based on five Note9 cold command timings (median
-0.568181s, maximum 0.896441s) with margin for validation and resolution.
-These are command-exit timings, not visual page-load measurements. See
-[measurement scope](docs/measurements.md).
+Run setup first. Replace both absolute paths below with the executable printed above and your runtime directory. JSON/TOML examples do not expand `$HOME`. Use one client at a time and close stale MCP connections. Only Cursor has recorded real-agent acceptance; the other formats are documentation-verified configurations.
+
+### Cursor
+
+Merge into `.cursor/mcp.json` or `~/.cursor/mcp.json` ([format](https://cursor.com/docs/mcp)):
+```json
+{"mcpServers":{"cordgeist":{"type":"stdio","command":"/absolute/path/cordgeist/target/release/cordgeist","args":["--runtime","/absolute/path/cordgeist-runtime","mcp"]}}}
+```
+
+### Claude Code
+
+Merge into the project's `.mcp.json` ([format](https://code.claude.com/docs/en/mcp)) and approve the server when prompted:
+```json
+{"mcpServers":{"cordgeist":{"type":"stdio","command":"/absolute/path/cordgeist/target/release/cordgeist","args":["--runtime","/absolute/path/cordgeist-runtime","mcp"]}}}
+```
+
+### Codex
+
+Add to `~/.codex/config.toml` ([format](https://developers.openai.com/codex/mcp/)):
+```toml
+[mcp_servers.cordgeist]
+command = "/absolute/path/cordgeist/target/release/cordgeist"
+args = ["--runtime", "/absolute/path/cordgeist-runtime", "mcp"]
+```
+
+### Verify it works
+
+Run `"$CG" --runtime "$RUNTIME" doctor --json`, then open a fresh agent chat:
+> Open Settings, search for 'Bluetooth', and tell me whether it's on. Do not toggle Bluetooth. Finish with session_finish.
+
+Prefer listing elements → passing `item.element` to the click tool → listing again. Use a screenshot when needed. If a client says unavailable, check its executable and runtime paths, including any stale global MCP entry. [MCP details](docs/mcp.md).
+
+## MCP tools
+
+<!-- Tool names verified against actual official-rmcp tools/list. -->
+Mobile inputs/rectangles use **screen pixels**. Legacy input tools retain **returned-screenshot pixels and frame IDs**; do not mix them.
+
+### Session
+
+| Tool | Purpose |
+|---|---|
+| `system_status` | Read backend readiness and status. |
+| `system_doctor` | Read prerequisite diagnostics; sends no tap. |
+| `devices_list` | List discovered phones. |
+| `actions_status` | Resolve a retained mutation outcome. |
+| `actions_cancel` | Cancel owned work without replaying it. |
+| `session_finish` | Release this MCP session’s phone. |
+
+### Screen
+
+| Tool | Purpose |
+|---|---|
+| `mobile_list_elements_on_screen` | Read labels and element references; bounded screenshot fallback. |
+| `mobile_take_screenshot` | Return a native-size screen PNG and geometry. |
+| `observations_screenshot` | Legacy screenshot with its returned-image frame contract. |
+
+### Input
+
+| Tool | Purpose |
+|---|---|
+| `mobile_click_on_screen_at_coordinates` | Prefer an element reference; server computes its center. |
+| `mobile_swipe_on_screen` | Swipe up/down/left/right through AOA HID. |
+| `mobile_type_keys` | Type ASCII through HID; optional submit uses labeled ADB ENTER. |
+| `mobile_press_button` | BACK/HOME/ENTER through explicitly labeled ADB. |
+| `input_tap` | Legacy tap using a screenshot frame and pixels. |
+| `input_swipe` | Legacy swipe using screenshot-frame coordinates. |
+| `input_hold` | Legacy bounded hold using screenshot-frame coordinates. |
+| `input_type` | Legacy ASCII typing with frame validation. |
+| `input_key` | Legacy supported keyboard usage with frame validation. |
+
+### Apps
+
+| Tool | Purpose |
+|---|---|
+| `mobile_launch_app` | Launch a common name or exact package through ADB. |
+| `mobile_list_apps` | List installed package identifiers. |
+
+## Example prompts
+
+- "Open Settings and tell me whether Bluetooth is on. Don't change it."
+- "List the installed app packages."
+- "Show me a screenshot of the current screen."
+- "Scroll down once, then show me what changed."
+- "Type hello into the focused search field without submitting."
+- "Finish the task and release the phone with session_finish."
+
+## Why hardware input?
+
+Framework injection such as `adb shell input` submits software events. Cordgeist's touch and typing instead travel through external USB AOA HID devices registered with Android's input stack. `adb shell getevent -lp` lists input devices; `getevent -lt` can show their events where shell permissions allow. Kernel touch events were used in the Note 9 mapping measurement.
+That mechanism can matter when applications filter injected events, but no app-specific bypass or universal compatibility is established. Apps may distinguish HID input. ADB still supplies app launch, screenshots, UI elements and explicitly labeled BACK/HOME/ENTER; those buttons report `via: adb`.
+
+## Limitations
+
+- Linux host only; one connected phone/client owner. Only Note 9 portrait is measured; other devices and landscape are untested.
+- ASCII/US-ANSI layout only; no arbitrary Unicode or IME support. No Bluetooth HID transport.
+- No OCR, screen recording/streaming, or media MCP tools. Five-app speed and dark-mode workflows have no recorded acceptance here.
+- UI dumps can fail; collection is bounded and falls back to an explicit screenshot/error. Screenshots and labels may reach your chosen model provider.
+- These timings are small samples, not latency guarantees. `sent` never proves that the app did what you intended.
+
+## Safety
+
+- **One authority:** daemon-owned selection, isolated session leases, exact routing and execution-time fencing; no credential handling by the model.
+- **No blind retry:** uncertain mutations retain their original identity; resolve status instead of repeating potentially delivered input.
+- **Bounded cleanup and observation:** coordinate/frame checks, cancellation and neutralization remain mandatory; UI text is untrusted, editable values withheld, and screenshots are not silently saved.
+
+## Contributing
+
+Use the pinned toolchain and cached dependencies. Run `./scripts/check.sh`, `./scripts/build-native.sh`, then `./scripts/check-native.sh`; keep software/fake results separate from hardware evidence. See [API](docs/api.md) and [CLI](docs/cli.md).
+
+## License
+
+[MIT](LICENSE). Preserve [NOTICE](NOTICE) and [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md). Pinned libaoahid is MIT; mobile-mcp adaptations are Apache-2.0. Bundled libusb is LGPL-2.1-or-later and requires its notices, corresponding source and replaceable shared-library obligations; see [portable packaging](packaging/PORTABLE-BUILD.md).
