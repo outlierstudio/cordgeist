@@ -26,11 +26,11 @@ Earlier portable builds were inspected with objdump and exercised in Ubuntu
 and do not certify a newly built public artifact. Inspect every new executable
 and bundled native library and repeat loader checks for any distributed archive.
 
-## Later owner-reported samples
+## Later recorded acceptance and typing
 
-The owner reports a later real Cursor acceptance run with 11 tool calls,
-zero errors, Bluetooth read without toggling and successful session_finish.
-The earlier 13-call run above is a separate run. The owner also reports one
-short ASCII typing action at 0.219 seconds. Raw timing boundaries and its payload
-are not included here; do not treat it as a benchmark or a latency guarantee.
-Neither result was rerun for this public source snapshot.
+A separate later Cursor run recorded 11 MCP tool calls, zero tool errors,
+87.014398 seconds process-spawn through exit, Bluetooth off before/after and
+successful session_finish. Its short ASCII typing call took 0.219171 seconds.
+See the [sanitized acceptance record](evidence/acceptance.md) for source/binary
+identity, per-call durations and measurement boundaries. The earlier 13-call run
+above is distinct. Neither result was rerun for this public source snapshot.

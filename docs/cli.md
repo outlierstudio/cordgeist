@@ -121,3 +121,26 @@ owned synthetic-target verifier (`--probe` remains an alias). Open the deliberat
 synthetic page first. Unsupported optional input-mapper parsing produces a
 warning; a failed target verification is not a successful calibration. Saved
 verified legacy profiles retain their measured mapping.
+
+## Explicit executable/runtime and optional calibration
+
+From a source checkout (for an archive, set CG to its cordgeist wrapper):
+
+```sh
+CG="$PWD/target/release/cordgeist"
+RUNTIME="$HOME/.local/state/cordgeist"
+install -d -m 700 "$RUNTIME"
+"$CG" --runtime "$RUNTIME" setup
+"$CG" --runtime "$RUNTIME" doctor --json
+"$CG" --runtime "$RUNTIME" list
+# Open the owned synthetic page before opting into input (steps below).
+# "$CG" --runtime "$RUNTIME" setup calibrate --verify
+# "$CG" --runtime "$RUNTIME" daemon stop
+```
+
+For optional verification, serve the page in a second terminal with
+`"$CG" setup test-area --port 18764`. Run
+`"$CG" --runtime "$RUNTIME" setup calibrate` to prepare USB loopback, then open
+`http://127.0.0.1:18764/` in the phone browser. Refresh and leave the first target
+untouched before running the explicit `--verify` command. Never probe a personal
+screen. Stop the owned page server after verification.

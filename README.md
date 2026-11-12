@@ -5,11 +5,10 @@
 <a href="https://github.com/outlierstudio/cordgeist"><img src="https://img.shields.io/github/stars/outlierstudio/cordgeist" alt="GitHub stars"></a>
 </div>
 
-**Taps and keystrokes arrive as a physical USB touchscreen and keyboard.** **Cordgeist registers external AOA HID devices, so touch and typing enter Android through its input-device path rather than framework event injection.**
-Navigate apps and Settings without root or an app installed on the phone. HID may help where apps filter injected input; behavior in those apps is not yet verified.
+**Your phone thinks a real touchscreen and keyboard just got plugged in.** No root, no app on the phone. Touch and typing use hardware input rather than framework event injection.
+Navigate apps and Settings; behavior in apps that filter injected input still needs per-app testing.
 
 <!-- demo -->
-Recordings pending; these are example workflows, not completed demo claims.
 
 **"open settings and turn on dark mode"**
 <!-- demo: dark-mode.mp4 -->
@@ -24,25 +23,23 @@ Recordings pending; these are example workflows, not completed demo claims.
 > Requires a **Linux x86_64 host** and an unlocked Android phone over USB with USB debugging authorized.
 > Only the **Galaxy Note 9 (Android 10, portrait)** has been tested. Other phones are untested.
 
-After [building](#install), run from the checkout:
+## Quickstart
+
+Install a [release archive or source build](#install), connect and authorize the phone, then run:
+
 ```sh
-CG="$PWD/target/release/cordgeist"                       # Native executable
-RUNTIME="$HOME/.local/state/cordgeist"                  # Shared CLI/MCP runtime
-install -d -m 700 "$RUNTIME"                            # User-owned runtime directory
-"$CG" --runtime "$RUNTIME" setup                        # Select the single phone; generic mapping
-"$CG" --runtime "$RUNTIME" doctor --json                # Read-only checks; no tap
-"$CG" --runtime "$RUNTIME" list                         # Inspect discovery
-realpath "$CG"                                        # Copy this absolute path into client config
-# Optional: open the owned synthetic page as described in docs/cli.md first.
-# "$CG" --runtime "$RUNTIME" setup calibrate --verify    # Explicit target verification and saved profile
-# "$CG" --runtime "$RUNTIME" daemon stop                # Stop after closing agent sessions
+install -d -m 700 "$HOME/.local/state/cordgeist"
+cordgeist --runtime "$HOME/.local/state/cordgeist" setup
+cordgeist --runtime "$HOME/.local/state/cordgeist" doctor --json
 ```
+
+Next, [configure your MCP client](#use-it-with-an-agent) with that executable and runtime, and open a fresh chat.
 
 ```mermaid
 flowchart LR
     Agent <--> MCP["MCP stdio"]
     MCP <--> Daemon["Cordgeist daemon"]
-    Daemon --> HID["AOA HID over USB"]
+    Daemon --> HID["USB HID"]
     HID -->|Touch and keys| Phone["Android phone"]
     Daemon <--> ADB
     ADB <-->|Launch, screenshots, UI elements, buttons| Phone
@@ -51,16 +48,27 @@ flowchart LR
 ## Features
 
 - **Measured mapping:** maximum Android-mapped error **1.343 px over 9 points** on a Galaxy Note 9; optional calibration, generic mapping by default.
-- **US-ANSI keyboard typing:** ASCII through HID; owner-reported short typing sample **0.219 s**, a single earlier result, not a benchmark.
+- **US-ANSI keyboard typing:** ASCII through HID; recorded short typing sample **0.219 s**, a single earlier result, not a benchmark.
 - **Touch and swipes:** element-center clicks, coordinate taps, directional swipes and legacy holds.
 - **App control and observation:** common-name/package launch, UI elements and explicit screenshots; actions skip automatic after-images.
 - **Typed receipts:** `sent`, `partial`, `not-sent` or `unknown`; delivery is separate from application success.
 - **Exclusive ownership:** one owner lease per phone, managed inside each MCP session.
-- **Real agent acceptance:** owner-reported Cursor run: **11 tool calls, 0 errors**, Bluetooth read without toggling, then hand-back.
+- **Real agent acceptance:** recorded Cursor run: **11 tool calls, 0 errors**, Bluetooth read without toggling, then hand-back.
 
-These are earlier development results, not fresh hardware acceptance of this source snapshot. See [measurement scope](docs/measurements.md).
+These are earlier development results, not fresh hardware acceptance of this source snapshot. See [acceptance evidence](docs/evidence/acceptance.md) and [measurement scope](docs/measurements.md).
 
 ## Install
+
+**Archive:** use the supplied `cordgeist-v0.1.0-linux-x86_64.tar.gz` and matching checksum. No download URL is assumed before a release is published.
+
+```sh
+sha256sum -c cordgeist-v0.1.0-linux-x86_64.tar.gz.sha256
+mkdir -p "$HOME/.local/opt"
+tar -xzf cordgeist-v0.1.0-linux-x86_64.tar.gz -C "$HOME/.local/opt"
+export PATH="$HOME/.local/opt/cordgeist-v0.1.0-linux-x86_64:$PATH"
+```
+
+**Or build:**
 
 Build from source with Rust **1.97.1**, CMake ≥3.20, a C++20 compiler, Ninja, pkg-config, and matching **libusb headers/runtime ≥1.0.30**. Install Google platform-tools `adb` separately and put it on PATH. Build scripts do not fetch dependencies; Cargo needs its locked crates available.
 
@@ -69,6 +77,7 @@ git clone https://github.com/outlierstudio/cordgeist.git
 cd cordgeist
 ./scripts/build-native.sh
 AOAHID_LIB_DIR="$PWD/build/native-prefix/lib" cargo build --release --locked --features native-aoa
+export PATH="$PWD/target/release:$PATH"
 ```
 
 This build uses the host's libc; it is not a portable binary promise. See [dependencies](docs/dependencies.md) and [portable build requirements](packaging/PORTABLE-BUILD.md).
@@ -76,7 +85,7 @@ For USB permission errors, review and explicitly install the scoped [udev rule](
 
 ## Use it with an agent
 
-Run setup first. Replace both absolute paths below with the executable printed above and your runtime directory. JSON/TOML examples do not expand `$HOME`. Use one client at a time and close stale MCP connections. Only Cursor has recorded real-agent acceptance; the other formats are documentation-verified configurations.
+Run setup first. Use `command -v cordgeist` to locate the executable; replace both absolute paths below with it and the runtime created in Quickstart. JSON/TOML examples do not expand `$HOME`. Use one client at a time and close stale MCP connections. Only Cursor has recorded real-agent acceptance; the other formats are documentation-verified configurations.
 
 ### Cursor
 
@@ -137,7 +146,7 @@ Mobile inputs/rectangles use **screen pixels**. Legacy input tools retain **retu
 | Tool | Purpose |
 |---|---|
 | `mobile_click_on_screen_at_coordinates` | Prefer an element reference; server computes its center. |
-| `mobile_swipe_on_screen` | Swipe up/down/left/right through AOA HID. |
+| `mobile_swipe_on_screen` | Swipe up/down/left/right through USB HID. |
 | `mobile_type_keys` | Type ASCII through HID; optional submit uses labeled ADB ENTER. |
 | `mobile_press_button` | BACK/HOME/ENTER through explicitly labeled ADB. |
 | `input_tap` | Legacy tap using a screenshot frame and pixels. |
